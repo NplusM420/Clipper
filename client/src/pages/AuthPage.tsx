@@ -24,7 +24,8 @@ export default function AuthPage() {
         title: "Welcome back!",
         description: "Login successful",
       });
-      setLocation("/");
+      // Force refresh user data and redirect
+      window.location.href = "/";
     },
     onError: (error: any) => {
       toast({
@@ -43,9 +44,10 @@ export default function AuthPage() {
     onSuccess: () => {
       toast({
         title: "Account created!",
-        description: "Registration successful",
+        description: "Welcome to Video Clipper Tool! You're now logged in.",
       });
-      setLocation("/");
+      // Force refresh user data and redirect immediately after registration
+      window.location.href = "/";
     },
     onError: (error: any) => {
       toast({
