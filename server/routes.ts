@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import WebSocket, { WebSocketServer } from "ws";
+// WebSocket imports removed to avoid conflict with Vite dev server
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import {
@@ -268,27 +268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // WebSocket setup for real-time updates
+  // HTTP server setup (WebSocket removed to avoid conflict with Vite)
   const httpServer = createServer(app);
-  const wss = new WebSocketServer({ server: httpServer });
-
-  wss.on('connection', (ws: WebSocket) => {
-    console.log('WebSocket client connected');
-    
-    ws.on('message', (message: Buffer) => {
-      try {
-        const data = JSON.parse(message.toString());
-        // Handle WebSocket messages for real-time updates
-        console.log('WebSocket message:', data);
-      } catch (error) {
-        console.error('WebSocket message error:', error);
-      }
-    });
-
-    ws.on('close', () => {
-      console.log('WebSocket client disconnected');
-    });
-  });
-
   return httpServer;
 }
