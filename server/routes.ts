@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 // WebSocket imports removed to avoid conflict with Vite dev server
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./auth";
 import {
   ObjectStorageService,
   ObjectNotFoundError,
@@ -16,21 +16,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
+  // Current user route is handled by auth.ts
 
   // Object storage routes for private files
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
-    const userId = req.user?.claims?.sub;
+    const userId = req.user?.id;
     const objectStorageService = new ObjectStorageService();
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
@@ -66,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/videos", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const videoData = insertVideoSchema.parse(req.body);
 
       // Validate video duration (max 1 hour)
@@ -111,7 +101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Video management endpoints
   app.get("/api/videos", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const videos = await storage.getUserVideos(userId);
       res.json(videos);
     } catch (error) {
@@ -128,7 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user owns the video
-      if (video.userId !== req.user.claims.sub) {
+      if (video.userId !== req.user.id) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -169,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Clip endpoints
   app.post("/api/clips", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const clipData = insertClipSchema.parse(req.body);
 
       // Verify user owns the video
@@ -209,7 +199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/clips", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const clips = await storage.getUserClips(userId);
       res.json(clips);
     } catch (error) {
@@ -236,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Settings endpoints
   app.put("/api/settings/openai-key", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { apiKey } = req.body;
 
       if (!apiKey) {

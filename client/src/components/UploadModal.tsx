@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ObjectUploader } from "@/components/ObjectUploader";
+import { SimpleFileUpload } from "@/components/SimpleFileUpload";
 import { Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -169,23 +169,10 @@ export function UploadModal({ isOpen, onClose, onVideoUploaded }: UploadModalPro
 
           {/* Upload Area */}
           <div data-testid="upload-area">
-            <ObjectUploader
-              maxNumberOfFiles={1}
+            <SimpleFileUpload
+              onUploadComplete={onVideoUploaded}
               maxFileSize={2 * 1024 * 1024 * 1024} // 2GB
-              onGetUploadParameters={handleGetUploadParameters}
-              onComplete={handleComplete}
-              buttonClassName="w-full h-40 border-2 border-dashed border-border hover:border-primary transition-colors"
-            >
-              <div className="flex flex-col items-center justify-center space-y-4">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-                  <Upload className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-medium">Drop your video here</p>
-                  <p className="text-sm text-muted-foreground">or click to browse files</p>
-                </div>
-              </div>
-            </ObjectUploader>
+            />
           </div>
 
           {/* Upload Progress */}

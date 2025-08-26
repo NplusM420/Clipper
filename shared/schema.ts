@@ -24,9 +24,11 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)]
 );
 
-// Users table (required for Replit Auth)
+// Users table (updated for username/password auth)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: varchar("username").unique().notNull(),
+  password: text("password").notNull(), // Hashed password
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
@@ -82,6 +84,8 @@ export const clips = pgTable("clips", {
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
+  username: true,
+  password: true,
   email: true,
   firstName: true,
   lastName: true,
@@ -112,7 +116,8 @@ export const insertClipSchema = createInsertSchema(clips).pick({
   quality: true,
 });
 
-// Types
+// Types  
+export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof insertUserSchema> & { id: string };
 export type User = typeof users.$inferSelect;
 export type Video = typeof videos.$inferSelect;
