@@ -1,0 +1,239 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(222, 84%, 4%);
+  --foreground: hsl(210, 40%, 98%);
+  --card: hsl(222, 84%, 7%);
+  --card-foreground: hsl(210, 40%, 98%);
+  --popover: hsl(222, 84%, 7%);
+  --popover-foreground: hsl(210, 40%, 98%);
+  --primary: hsl(217, 91%, 60%);
+  --primary-foreground: hsl(222, 47%, 11%);
+  --secondary: hsl(217, 32%, 17%);
+  --secondary-foreground: hsl(210, 40%, 98%);
+  --muted: hsl(217, 32%, 17%);
+  --muted-foreground: hsl(215, 20%, 65%);
+  --accent: hsl(38, 92%, 50%);
+  --accent-foreground: hsl(222, 47%, 11%);
+  --destructive: hsl(0, 63%, 31%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(217, 32%, 17%);
+  --input: hsl(217, 32%, 17%);
+  --ring: hsl(224, 71%, 4%);
+  --chart-1: hsl(220, 70%, 50%);
+  --chart-2: hsl(160, 60%, 45%);
+  --chart-3: hsl(30, 80%, 55%);
+  --chart-4: hsl(280, 65%, 60%);
+  --chart-5: hsl(340, 75%, 55%);
+  --sidebar: hsl(222, 84%, 7%);
+  --sidebar-foreground: hsl(210, 40%, 98%);
+  --sidebar-primary: hsl(217, 91%, 60%);
+  --sidebar-primary-foreground: hsl(222, 47%, 11%);
+  --sidebar-accent: hsl(217, 32%, 17%);
+  --sidebar-accent-foreground: hsl(210, 40%, 98%);
+  --sidebar-border: hsl(217, 32%, 17%);
+  --sidebar-ring: hsl(224, 71%, 4%);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: 'Georgia', serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  --radius: 8px;
+  --shadow-2xs: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00), 0px 1px 2px -1px hsl(224, 71%, 4%, 0.00);
+  --shadow: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00), 0px 1px 2px -1px hsl(224, 71%, 4%, 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00), 0px 2px 4px -1px hsl(224, 71%, 4%, 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00), 0px 4px 6px -1px hsl(224, 71%, 4%, 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00), 0px 8px 10px -1px hsl(224, 71%, 4%, 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(224, 71%, 4%, 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: hsl(222, 84%, 4%);
+  --foreground: hsl(210, 40%, 98%);
+  --card: hsl(222, 84%, 7%);
+  --card-foreground: hsl(210, 40%, 98%);
+  --popover: hsl(222, 84%, 7%);
+  --popover-foreground: hsl(210, 40%, 98%);
+  --primary: hsl(217, 91%, 60%);
+  --primary-foreground: hsl(222, 47%, 11%);
+  --secondary: hsl(217, 32%, 17%);
+  --secondary-foreground: hsl(210, 40%, 98%);
+  --muted: hsl(217, 32%, 17%);
+  --muted-foreground: hsl(215, 20%, 65%);
+  --accent: hsl(38, 92%, 50%);
+  --accent-foreground: hsl(222, 47%, 11%);
+  --destructive: hsl(0, 63%, 31%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(217, 32%, 17%);
+  --input: hsl(217, 32%, 17%);
+  --ring: hsl(224, 71%, 4%);
+  --chart-1: hsl(220, 70%, 50%);
+  --chart-2: hsl(160, 60%, 45%);
+  --chart-3: hsl(30, 80%, 55%);
+  --chart-4: hsl(280, 65%, 60%);
+  --chart-5: hsl(340, 75%, 55%);
+  --sidebar: hsl(222, 84%, 7%);
+  --sidebar-foreground: hsl(210, 40%, 98%);
+  --sidebar-primary: hsl(217, 91%, 60%);
+  --sidebar-primary-foreground: hsl(222, 47%, 11%);
+  --sidebar-accent: hsl(217, 32%, 17%);
+  --sidebar-accent-foreground: hsl(210, 40%, 98%);
+  --sidebar-border: hsl(217, 32%, 17%);
+  --sidebar-ring: hsl(224, 71%, 4%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Video Player Specific Styles */
+  .timeline-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .clip-segment {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background-color: hsl(217, 91%, 60%, 0.3);
+    border: 1px solid var(--primary);
+    border-radius: 2px;
+  }
+
+  .transcript-highlight {
+    background-color: hsl(217, 91%, 60%, 0.2);
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+
+  .processing-animation {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: .5;
+    }
+  }
+
+  /* Drag and Drop States */
+  .drag-active {
+    border-color: var(--primary);
+    background-color: hsl(217, 91%, 60%, 0.05);
+  }
+
+  /* Search highlighting */
+  mark {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+    padding: 1px 2px;
+    border-radius: 2px;
+  }
+
+  /* Custom scrollbar for transcript */
+  .transcript-content::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .transcript-content::-webkit-scrollbar-track {
+    background: var(--muted);
+    border-radius: 3px;
+  }
+
+  .transcript-content::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: 3px;
+  }
+
+  .transcript-content::-webkit-scrollbar-thumb:hover {
+    background: var(--foreground);
+  }
+
+  /* Upload progress animations */
+  .upload-progress {
+    background: linear-gradient(90deg, var(--primary) 0%, var(--primary) 50%, transparent 50%, transparent 100%);
+    background-size: 20px 20px;
+    animation: move 1s linear infinite;
+  }
+
+  @keyframes move {
+    0% {
+      background-position: 0 0;
+    }
+    100% {
+      background-position: 20px 0;
+    }
+  }
+
+  /* Modal backdrop blur effect */
+  .modal-backdrop {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  /* Status indicators */
+  .status-ready {
+    background-color: hsl(142, 76%, 36%);
+  }
+
+  .status-processing {
+    background-color: var(--accent);
+  }
+
+  .status-error {
+    background-color: var(--destructive);
+  }
+
+  .status-pending {
+    background-color: var(--muted-foreground);
+  }
+
+  /* Video player controls */
+  .video-controls {
+    background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.7) 100%);
+  }
+
+  /* Clip timeline visualization */
+  .clip-timeline {
+    background: linear-gradient(90deg, 
+      transparent 0%, 
+      var(--primary) 2%, 
+      var(--primary) 98%, 
+      transparent 100%
+    );
+  }
+
+  /* Toast notifications */
+  .toast-success {
+    border-left: 4px solid hsl(142, 76%, 36%);
+  }
+
+  .toast-error {
+    border-left: 4px solid var(--destructive);
+  }
+
+  .toast-info {
+    border-left: 4px solid var(--primary);
+  }
+
+  .toast-warning {
+    border-left: 4px solid var(--accent);
+  }
+}
