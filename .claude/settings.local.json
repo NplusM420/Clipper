@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(node:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm install:*)"
+    ],
+    "additionalDirectories": [
+      "/mnt/d/Clients"
+    ]
+  }
+}

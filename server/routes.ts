@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-// WebSocket imports removed to avoid conflict with Vite dev server
+import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import {
@@ -10,9 +10,18 @@ import {
 import { ObjectPermission } from "./objectAcl";
 import { TranscriptionService } from "./services/transcriptionService";
 import { VideoProcessingService } from "./services/videoProcessingService";
+import { VideoChunkingService } from "./services/videoChunkingService";
+import { initializeProgressService } from "./services/progressService";
 import { insertVideoSchema, insertClipSchema } from "@shared/schema";
+import { LIMITS } from "@shared/constants";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, io?: SocketServer): Promise<Server> {
+  // Initialize progress service
+  const progressService = initializeProgressService(io);
+
   // Auth middleware
   await setupAuth(app);
 
@@ -32,7 +41,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!canAccess) {
         return res.sendStatus(401);
       }
-      objectStorageService.downloadObject(objectFile, res);
+      objectStorageService.downloadObjectEntity(objectFile, res);
     } catch (error) {
       console.error("Error checking object access:", error);
       if (error instanceof ObjectNotFoundError) {
@@ -42,15 +51,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Video upload endpoints
-  app.post("/api/videos/upload-url", isAuthenticated, async (req, res) => {
+  // Server-side video upload endpoint with automatic chunking support
+  app.post("/api/videos/upload", isAuthenticated, async (req: any, res) => {
     try {
+      console.log("🚀 Direct server upload for user:", req.user?.id);
+      
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      const videoChunkingService = new VideoChunkingService();
+      
+      // Use multer to handle the file upload
+      const upload = multer({
+        limits: { fileSize: LIMITS.MAX_VIDEO_SIZE },
+        storage: multer.memoryStorage(),
+        fileFilter: (req, file, cb) => {
+          // Only allow MP4 files
+          if (file.mimetype !== 'video/mp4') {
+            return cb(new Error('Only MP4 files are allowed'));
+          }
+          cb(null, true);
+        }
+      }).single('file');
+      
+      upload(req, res, async (err) => {
+        if (err) {
+          console.error("❌ Multer error:", err);
+          return res.status(400).json({ error: "File upload error" });
+        }
+        
+        if (!req.file) {
+          return res.status(400).json({ error: "No file uploaded" });
+        }
+
+        // Create unique upload ID for progress tracking
+        const uploadId = `upload_${Date.now()}_${req.user?.id}`;
+        const progressSession = progressService.createUploadSession(uploadId);
+        
+        console.log("📁 File received:", {
+          originalName: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        });
+
+        // Emit initial upload complete event
+        progressSession.emitPhase('upload', 'File uploaded successfully', 100);
+
+        // Save file temporarily for processing
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
+        const tempFilePath = path.join(tempDir, `upload_${Date.now()}.mp4`);
+        fs.writeFileSync(tempFilePath, req.file.buffer);
+        
+        try {
+          // Emit analysis phase
+          progressSession.emitPhase('analysis', 'Analyzing video...', 10);
+
+          // Analyze if chunking is needed
+          const analysis = await videoChunkingService.analyzeVideo(tempFilePath);
+          console.log("📊 Video analysis:", analysis);
+
+          progressSession.emitPhase('analysis', 'Video analysis complete', 20);
+
+          if (!analysis.needsChunking) {
+            // File is small enough, upload directly
+            console.log("📤 Uploading directly (no chunking needed)");
+            progressSession.emitPhase('cloudinary', 'Uploading video to Cloudinary...', 40);
+
+            const result = await objectStorageService.uploadVideo(req.file.buffer, {
+              folder: 'video-clipper/uploads',
+              public_id: `video_${Date.now()}`,
+              resource_type: 'video'
+            });
+            
+            // Clean up temp file
+            fs.unlinkSync(tempFilePath);
+
+            progressSession.emitPhase('complete', 'Upload complete!', 100);
+            
+            res.json({
+              uploadId,
+              secure_url: result.secure_url,
+              public_id: result.public_id,
+              resource_type: result.resource_type,
+              bytes: result.bytes,
+              duration: result.duration,
+              isChunked: false,
+              totalChunks: 1
+            });
+            
+          } else {
+            // File needs chunking
+            console.log("✂️ Chunking video into", analysis.estimatedChunks, "parts");
+            progressSession.emitPhase('chunking', `Creating ${analysis.estimatedChunks} video chunks...`, 30);
+
+            const videoId = `video_${Date.now()}`;
+            
+            // We'll need to modify videoChunkingService to emit progress
+            const chunks = await videoChunkingService.chunkVideo(tempFilePath, videoId, progressSession);
+            
+            console.log(`📦 Created ${chunks.length} chunks, uploading to Cloudinary...`);
+            progressSession.emitPhase('cloudinary', 'Starting chunk uploads to Cloudinary...', 60);
+            
+            // Upload each chunk to Cloudinary
+            const uploadedParts = [];
+            for (let i = 0; i < chunks.length; i++) {
+              const chunk = chunks[i];
+              console.log(`📤 Uploading chunk ${i + 1}/${chunks.length} (${chunk.fileSize} bytes)`);
+              
+              // Emit chunk upload progress
+              progressSession.emitChunkProgress(i, chunks.length, 0, 'Uploading to Cloudinary');
+              
+              const chunkBuffer = fs.readFileSync(chunk.filePath);
+              const chunkResult = await objectStorageService.uploadVideo(chunkBuffer, {
+                folder: 'video-clipper/uploads',
+                public_id: `${videoId}_part_${chunk.index}`,
+                resource_type: 'video'
+              });
+              
+              // Emit chunk upload complete
+              progressSession.emitChunkProgress(i, chunks.length, 100, 'Uploaded to Cloudinary');
+              
+              uploadedParts.push({
+                index: chunk.index,
+                startTime: chunk.startTime,
+                endTime: chunk.endTime,
+                duration: chunk.duration,
+                cloudinaryPublicId: chunkResult.public_id,
+                size: chunk.fileSize,
+                secure_url: chunkResult.secure_url
+              });
+            }
+            
+            // Clean up temp files
+            progressSession.emitPhase('database', 'Cleaning up temporary files...', 90);
+            await videoChunkingService.cleanupChunks(chunks);
+            fs.unlinkSync(tempFilePath);
+            
+            console.log("✅ All chunks uploaded successfully");
+            progressSession.emitPhase('complete', 'Video processing complete!', 100);
+            
+            res.json({
+              uploadId,
+              secure_url: uploadedParts[0].secure_url, // First part URL for compatibility
+              public_id: videoId, // Master video ID
+              resource_type: 'video',
+              bytes: analysis.fileSize,
+              duration: analysis.totalDuration,
+              isChunked: true,
+              totalChunks: chunks.length,
+              parts: uploadedParts
+            });
+          }
+          
+        } catch (uploadError: any) {
+          console.error("❌ Upload/chunking error:", uploadError);
+          
+          // Clean up temp file on error
+          if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+          }
+          
+          const errorMessage = uploadError.message || "Failed to process video upload";
+          res.status(500).json({ error: errorMessage });
+        }
+      });
+      
     } catch (error) {
-      console.error("Error getting upload URL:", error);
-      res.status(500).json({ error: "Failed to get upload URL" });
+      console.error("❌ Error in server upload:", error);
+      res.status(500).json({ error: "Failed to process upload" });
     }
   });
 
@@ -70,7 +239,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         videoData.originalPath,
         {
           owner: userId,
-          visibility: "private",
+          read: [],
+          write: [],
         }
       );
 
@@ -79,6 +249,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...videoData,
         originalPath: videoPath,
       });
+
+      // If this is a chunked video, create video parts records
+      if (videoData.isChunked && req.body.parts) {
+        console.log(`📝 Creating ${req.body.parts.length} video part records`);
+        for (const part of req.body.parts) {
+          await storage.createVideoPart({
+            videoId: video.id,
+            partIndex: part.index,
+            startTime: part.startTime,
+            endTime: part.endTime,
+            duration: part.duration,
+            cloudinaryPublicId: part.cloudinaryPublicId,
+            size: part.size,
+            status: 'ready'
+          });
+        }
+      }
 
       // Update video status to ready
       await storage.updateVideoStatus(video.id, "ready");
@@ -129,11 +316,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get video parts for chunked videos
+  app.get("/api/videos/:id/parts", isAuthenticated, async (req: any, res) => {
+    try {
+      const video = await storage.getVideo(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      // Check if user owns the video
+      if (video.userId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!video.isChunked) {
+        return res.json([]);
+      }
+
+      const parts = await storage.getVideoParts(req.params.id);
+      res.json(parts);
+    } catch (error) {
+      console.error("Error fetching video parts:", error);
+      res.status(500).json({ error: "Failed to fetch video parts" });
+    }
+  });
+
   // Transcript endpoints
   app.get("/api/videos/:id/transcript", isAuthenticated, async (req: any, res) => {
     try {
       const video = await storage.getVideo(req.params.id);
-      if (!video || video.userId !== req.user.claims.sub) {
+      if (!video || video.userId !== req.user.id) {
         return res.status(404).json({ error: "Video not found" });
       }
 
@@ -185,7 +397,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/videos/:id/clips", isAuthenticated, async (req: any, res) => {
     try {
       const video = await storage.getVideo(req.params.id);
-      if (!video || video.userId !== req.user.claims.sub) {
+      if (!video || video.userId !== req.user.id) {
         return res.status(404).json({ error: "Video not found" });
       }
 
@@ -211,7 +423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/clips/:id", isAuthenticated, async (req: any, res) => {
     try {
       const clip = await storage.getClip(req.params.id);
-      if (!clip || clip.userId !== req.user.claims.sub) {
+      if (!clip || clip.userId !== req.user.id) {
         return res.status(404).json({ error: "Clip not found" });
       }
 

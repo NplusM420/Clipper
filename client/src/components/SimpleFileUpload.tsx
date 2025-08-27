@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { LIMITS } from "@shared/constants";
+import { EnhancedProgressTracker } from "./EnhancedProgressTracker";
+import { useUploadProgress } from "@/hooks/useSocket";
 
 interface SimpleFileUploadProps {
   onUploadComplete: (video: any) => void;
@@ -12,12 +15,26 @@ interface SimpleFileUploadProps {
 
 export function SimpleFileUpload({ 
   onUploadComplete, 
-  maxFileSize = 2 * 1024 * 1024 * 1024 // 2GB default 
+  maxFileSize = LIMITS.MAX_VIDEO_SIZE 
 }: SimpleFileUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentUploadId, setCurrentUploadId] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  // Hook for real-time progress updates
+  const { progress: socketProgress, clearProgress } = useUploadProgress(currentUploadId || undefined);
+
+  // Handle upload completion based on socket progress
+  useEffect(() => {
+    if (socketProgress?.phase === 'complete' && isUploading) {
+      // Upload completed via socket, we can finish the process
+      setIsUploading(false);
+      setCurrentUploadId(null);
+      clearProgress();
+    }
+  }, [socketProgress, isUploading, clearProgress]);
 
   const validateFile = (file: File): string | null => {
     if (!file.type.startsWith('video/mp4')) {
@@ -72,11 +89,19 @@ export function SimpleFileUpload({
     setUploadProgress(0);
 
     try {
-      // Get upload URL
-      const response = await apiRequest("POST", "/api/videos/upload-url");
-      const { uploadURL } = await response.json();
+      console.log("🚀 Starting server-side upload...");
+      
+      // Create FormData for server upload
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      
+      console.log("📦 Uploading file:", {
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        fileType: selectedFile.type
+      });
 
-      // Upload file with progress tracking
+      // Upload file with progress tracking to our server
       const xhr = new XMLHttpRequest();
       
       xhr.upload.addEventListener('progress', (e) => {
@@ -87,13 +112,24 @@ export function SimpleFileUpload({
       });
 
       xhr.onload = async () => {
+        console.log("📡 Upload completed with status:", xhr.status);
+        console.log("📄 Response text:", xhr.responseText);
+        
         if (xhr.status === 200) {
           try {
+            const uploadResult = JSON.parse(xhr.responseText);
+            console.log("✅ Upload result:", uploadResult);
+            
+            // Store upload ID for progress tracking
+            if (uploadResult.uploadId) {
+              setCurrentUploadId(uploadResult.uploadId);
+            }
+            
             // Get video duration
             const duration = await getVideoDuration(selectedFile);
             
             // Validate duration (max 1 hour)
-            if (duration > 3600) {
+            if (duration > LIMITS.MAX_VIDEO_DURATION) {
               toast({
                 title: "Upload Error",
                 description: "Video duration exceeds 1 hour limit",
@@ -103,24 +139,36 @@ export function SimpleFileUpload({
               return;
             }
 
-            // Create video record
+            // Create video record with server upload result
             const videoData = {
               filename: selectedFile.name,
-              originalPath: uploadURL,
-              duration,
-              size: selectedFile.size,
+              originalPath: uploadResult.secure_url,
+              duration: uploadResult.duration || duration, // Use Cloudinary duration if available
+              size: uploadResult.bytes || selectedFile.size,
+              isChunked: uploadResult.isChunked || false,
+              totalChunks: uploadResult.totalChunks || 1,
               metadata: {
                 type: selectedFile.type,
                 lastModified: selectedFile.lastModified,
+                cloudinary_public_id: uploadResult.public_id,
+                cloudinary_resource_type: uploadResult.resource_type,
+                ...(uploadResult.isChunked && { isChunked: true, totalChunks: uploadResult.totalChunks })
               },
             };
 
-            const videoResponse = await apiRequest("POST", "/api/videos", videoData);
+            // Include parts data for chunked videos
+            const requestBody = uploadResult.isChunked ? 
+              { ...videoData, parts: uploadResult.parts } : 
+              videoData;
+
+            const videoResponse = await apiRequest("POST", "/api/videos", requestBody);
             const video = await videoResponse.json();
 
             toast({
               title: "Upload Successful",
-              description: "Video uploaded and processing started",
+              description: uploadResult.isChunked 
+                ? `Video split into ${uploadResult.totalChunks} parts and uploaded successfully`
+                : "Video uploaded and processing started",
             });
 
             onUploadComplete(video);
@@ -141,6 +189,7 @@ export function SimpleFileUpload({
       };
 
       xhr.onerror = () => {
+        console.error("❌ XHR Error during upload");
         toast({
           title: "Upload Error",
           description: "Failed to upload video. Please try again.",
@@ -149,9 +198,9 @@ export function SimpleFileUpload({
         setIsUploading(false);
       };
 
-      xhr.open('PUT', uploadURL);
-      xhr.setRequestHeader('Content-Type', selectedFile.type);
-      xhr.send(selectedFile);
+      console.log("🎯 Starting upload to server: /api/videos/upload");
+      xhr.open('POST', '/api/videos/upload');
+      xhr.send(formData);
 
     } catch (error) {
       console.error("Upload error:", error);
@@ -216,12 +265,20 @@ export function SimpleFileUpload({
 
           {/* Upload Progress */}
           {isUploading && (
-            <div className="space-y-2 mb-3">
-              <div className="flex justify-between text-sm">
-                <span>Uploading...</span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <Progress value={uploadProgress} className="h-2" />
+            <div className="space-y-4 mb-3">
+              {/* Enhanced Progress Tracker for detailed backend progress */}
+              {socketProgress ? (
+                <EnhancedProgressTracker currentProgress={socketProgress} />
+              ) : (
+                /* Simple progress bar for initial file upload */
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Uploading file to server...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <Progress value={uploadProgress} className="h-2" />
+                </div>
+              )}
             </div>
           )}
 

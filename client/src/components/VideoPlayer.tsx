@@ -2,9 +2,12 @@ import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, Volume2, SkipBack, SkipForward } from "lucide-react";
+import { ChunkedVideoPlayer } from "./ChunkedVideoPlayer";
+import { Video as VideoType } from "@shared/schema";
 
 interface VideoPlayerProps {
-  src: string;
+  src?: string; // Deprecated: use video object instead
+  video?: VideoType; // New: video object with chunking support
   onTimeUpdate?: (currentTime: number) => void;
   onSeek?: (time: number) => void;
   currentTime?: number;
@@ -15,6 +18,7 @@ interface VideoPlayerProps {
 
 export function VideoPlayer({
   src,
+  video,
   onTimeUpdate,
   onSeek,
   currentTime,
@@ -121,12 +125,35 @@ export function VideoPlayer({
     <div className="bg-card rounded-lg overflow-hidden" data-testid="video-player">
       {/* Video Element */}
       <div className="relative aspect-video bg-black">
-        <video
-          ref={videoRef}
-          src={src}
-          className="w-full h-full"
-          data-testid="video-element"
-        />
+        {video ? (
+          // Use ChunkedVideoPlayer for video objects (supports chunking)
+          <ChunkedVideoPlayer
+            video={video}
+            currentTime={currentTime || 0}
+            onTimeUpdate={onTimeUpdate}
+            onLoadedMetadata={() => {
+              if (videoRef.current) {
+                setDuration(videoRef.current.duration);
+              }
+            }}
+            className="w-full h-full"
+            controls={false} // We handle controls ourselves
+            ref={videoRef}
+          />
+        ) : src ? (
+          // Fallback to regular video element for src prop (backward compatibility)
+          <video
+            ref={videoRef}
+            src={src}
+            className="w-full h-full"
+            data-testid="video-element"
+          />
+        ) : (
+          // No video source provided
+          <div className="w-full h-full flex items-center justify-center text-white">
+            No video selected
+          </div>
+        )}
         
         {/* Timeline Overlay */}
         <div className="absolute bottom-0 left-0 right-0 bg-black/70 backdrop-blur-sm p-4">

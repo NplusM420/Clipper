@@ -3,7 +3,9 @@ import {
   videos,
   transcripts,
   clips,
+  videoParts,
   type User,
+  type InsertUser,
   type UpsertUser,
   type Video,
   type InsertVideo,
@@ -11,6 +13,8 @@ import {
   type InsertTranscript,
   type Clip,
   type InsertClip,
+  type VideoPart,
+  type InsertVideoPart,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -20,6 +24,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, userData: Partial<InsertUser>): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
   
   // Video operations
@@ -42,6 +47,12 @@ export interface IStorage {
   updateClipStatus(id: string, status: string, outputPath?: string): Promise<void>;
   updateClipProgress(id: string, progress: number): Promise<void>;
   deleteClip(id: string): Promise<void>;
+
+  // Video parts operations (for chunked videos)
+  createVideoPart(videoPart: InsertVideoPart): Promise<VideoPart>;
+  getVideoParts(videoId: string): Promise<VideoPart[]>;
+  updateVideoPartStatus(id: string, status: string): Promise<void>;
+  deleteVideoParts(videoId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -62,16 +73,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // For updates (when id exists), just update specific fields
+    if (userData.id) {
+      return this.updateUser(userData.id, userData);
+    }
+    // For inserts, we need all required fields
     const [user] = await db
       .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
+      .values(userData as InsertUser)
+      .returning();
+    return user;
+  }
+
+  async updateUser(id: string, userData: Partial<InsertUser>): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({
+        ...userData,
+        updatedAt: new Date(),
       })
+      .where(eq(users.id, id))
       .returning();
     return user;
   }
@@ -184,6 +205,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteClip(id: string): Promise<void> {
     await db.delete(clips).where(eq(clips.id, id));
+  }
+
+  // Video parts operations (for chunked videos)
+  async createVideoPart(videoPart: InsertVideoPart): Promise<VideoPart> {
+    const [newVideoPart] = await db
+      .insert(videoParts)
+      .values(videoPart)
+      .returning();
+    return newVideoPart;
+  }
+
+  async getVideoParts(videoId: string): Promise<VideoPart[]> {
+    return await db
+      .select()
+      .from(videoParts)
+      .where(eq(videoParts.videoId, videoId))
+      .orderBy(videoParts.partIndex);
+  }
+
+  async updateVideoPartStatus(id: string, status: string): Promise<void> {
+    await db
+      .update(videoParts)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(videoParts.id, id));
+  }
+
+  async deleteVideoParts(videoId: string): Promise<void> {
+    await db.delete(videoParts).where(eq(videoParts.videoId, videoId));
   }
 }
 

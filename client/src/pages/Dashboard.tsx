@@ -189,6 +189,7 @@ export default function Dashboard() {
   const handleVideoUpload = (video: VideoType) => {
     queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
     setSelectedVideo(video);
+    setIsUploadModalOpen(false);
   };
 
   const handleVideoSelect = (video: VideoType) => {
@@ -463,7 +464,7 @@ export default function Dashboard() {
               {/* Video Player Panel */}
               <div className="flex-1 flex flex-col p-6">
                 <VideoPlayer
-                  src={selectedVideo.originalPath}
+                  video={selectedVideo}
                   onTimeUpdate={setCurrentTime}
                   onSeek={handleSeek}
                   currentTime={currentTime}

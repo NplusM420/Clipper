@@ -22,18 +22,18 @@ Preferred communication style: Simple, everyday language.
 - **Runtime**: Node.js with Express.js framework
 - **Language**: TypeScript with ES modules
 - **Database ORM**: Drizzle ORM with PostgreSQL dialect for type-safe database operations
-- **Authentication**: Replit's built-in OpenID Connect authentication system with session management
+- **Authentication**: Username/password authentication with Passport.js and session management
 - **File Processing**: FFmpeg for video processing and clipping operations
 - **API Design**: RESTful API endpoints with comprehensive error handling and request logging
 
 ### Data Storage Solutions
-- **Primary Database**: PostgreSQL via Neon serverless with connection pooling
-- **Object Storage**: Google Cloud Storage integration through Replit's sidecar service for video file storage
+- **Primary Database**: PostgreSQL via Railway with connection pooling
+- **Object Storage**: Cloudinary integration for video file storage
 - **Session Storage**: PostgreSQL-backed session store using connect-pg-simple
 - **Schema Management**: Drizzle migrations with schema versioning in shared directory
 
 ### Authentication and Authorization
-- **Authentication Provider**: Replit's OpenID Connect implementation
+- **Authentication Provider**: Custom username/password authentication with Passport.js
 - **Session Management**: Express sessions with PostgreSQL persistence and 7-day TTL
 - **API Security**: Route-level authentication middleware protecting all API endpoints
 - **Object Access Control**: Custom ACL system for fine-grained file access permissions based on user ownership
@@ -47,16 +47,15 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### Cloud Services
-- **Neon Database**: Serverless PostgreSQL hosting with automatic scaling and connection pooling
-- **Google Cloud Storage**: Object storage for video files via Replit's managed sidecar service
-- **Replit Authentication**: OpenID Connect provider for user authentication and session management
+- **Railway Database**: PostgreSQL hosting with automatic scaling and connection pooling
+- **Cloudinary**: Object storage and transformation service for video files
 
 ### Third-Party APIs
 - **OpenAI Whisper API**: Speech-to-text transcription service with timestamp granularity and JSON response format
-- **Replit Sidecar**: Internal service providing Google Cloud Storage credentials and token management
+- **Cloudinary API**: Video upload, storage, and transformation service
 
 ### Core Libraries
 - **Video Processing**: fluent-ffmpeg for video manipulation, clipping, and metadata extraction
 - **File Upload**: Uppy dashboard for drag-and-drop file upload with progress tracking and validation
 - **UI Components**: Radix UI primitives providing accessible, unstyled components for complex interactions
-- **Database**: @neondatabase/serverless for WebSocket-based PostgreSQL connections optimized for serverless environments
+- **Database**: PostgreSQL via Railway with standard node-postgres connections

@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { SimpleFileUpload } from "@/components/SimpleFileUpload";
-import { Upload, X } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -14,126 +12,12 @@ interface UploadModalProps {
 }
 
 export function UploadModal({ isOpen, onClose, onVideoUploaded }: UploadModalProps) {
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const { toast } = useToast();
 
-  const validateVideo = (file: File): string | null => {
-    // Check file type
-    if (!file.type.startsWith('video/mp4')) {
-      return "Only MP4 files are supported";
-    }
-
-    // Check file size (2GB limit)
-    const maxSize = 2 * 1024 * 1024 * 1024; // 2GB
-    if (file.size > maxSize) {
-      return "File size exceeds 2GB limit";
-    }
-
-    return null;
-  };
-
-  const getVideoDuration = (file: File): Promise<number> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      
-      video.onloadedmetadata = () => {
-        window.URL.revokeObjectURL(video.src);
-        resolve(video.duration);
-      };
-      
-      video.onerror = () => {
-        window.URL.revokeObjectURL(video.src);
-        reject(new Error('Failed to load video metadata'));
-      };
-      
-      video.src = URL.createObjectURL(file);
-    });
-  };
-
-  const handleGetUploadParameters = async () => {
-    try {
-      const response = await apiRequest("POST", "/api/videos/upload-url");
-      const { uploadURL } = await response.json();
-      return {
-        method: "PUT" as const,
-        url: uploadURL,
-      };
-    } catch (error) {
-      console.error("Failed to get upload URL:", error);
-      toast({
-        title: "Upload Error",
-        description: "Failed to get upload URL. Please try again.",
-        variant: "destructive",
-      });
-      throw error;
-    }
-  };
-
-  const handleComplete = async (result: any) => {
-    try {
-      if (result.successful && result.successful.length > 0 && uploadedFile) {
-        const uploadedUrl = result.successful[0].uploadURL;
-        
-        // Get video duration
-        const duration = await getVideoDuration(uploadedFile);
-        
-        // Validate duration (max 1 hour)
-        if (duration > 3600) {
-          toast({
-            title: "Upload Error",
-            description: "Video duration exceeds 1 hour limit",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Create video record
-        const videoData = {
-          filename: uploadedFile.name,
-          originalPath: uploadedUrl,
-          duration,
-          size: uploadedFile.size,
-          metadata: {
-            type: uploadedFile.type,
-            lastModified: uploadedFile.lastModified,
-          },
-        };
-
-        const response = await apiRequest("POST", "/api/videos", videoData);
-        const video = await response.json();
-
-        toast({
-          title: "Upload Successful",
-          description: "Video uploaded and processing started",
-        });
-
-        onVideoUploaded(video);
-        onClose();
-        
-        // Reset state
-        setUploadProgress(0);
-        setIsUploading(false);
-        setUploadedFile(null);
-      }
-    } catch (error) {
-      console.error("Failed to create video record:", error);
-      toast({
-        title: "Upload Error",
-        description: "Failed to process uploaded video. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+  // Validation and upload logic is now handled by SimpleFileUpload component
 
   const handleClose = () => {
-    if (!isUploading) {
-      onClose();
-      setUploadProgress(0);
-      setUploadedFile(null);
-    }
+    onClose();
   };
 
   return (
@@ -175,24 +59,7 @@ export function UploadModal({ isOpen, onClose, onVideoUploaded }: UploadModalPro
             />
           </div>
 
-          {/* Upload Progress */}
-          {isUploading && (
-            <div className="space-y-3" data-testid="upload-progress">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Uploading video...</span>
-                <span className="text-sm text-muted-foreground">{uploadProgress}%</span>
-              </div>
-              <Progress value={uploadProgress} className="h-2" />
-              {uploadedFile && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>{uploadedFile.name}</span>
-                  <span>
-                    {(uploadedFile.size / (1024 * 1024)).toFixed(1)} MB
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Progress is handled by SimpleFileUpload component */}
 
           {/* Processing Notice */}
           <div className="bg-accent/10 border border-accent/20 rounded-lg p-4">
@@ -214,10 +81,9 @@ export function UploadModal({ isOpen, onClose, onVideoUploaded }: UploadModalPro
             <Button
               variant="outline"
               onClick={handleClose}
-              disabled={isUploading}
               data-testid="button-cancel-upload"
             >
-              {isUploading ? "Uploading..." : "Cancel"}
+              Cancel
             </Button>
           </div>
         </div>
