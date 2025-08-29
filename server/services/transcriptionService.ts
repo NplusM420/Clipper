@@ -5,9 +5,24 @@ import path from "path";
 import { ObjectStorageService } from "../objectStorage";
 import fetch from "node-fetch";
 import ffmpeg from "fluent-ffmpeg";
+import { transcripts, videos } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+export class TranscriptionError extends Error {
+  constructor(
+    message: string,
+    public code: 'FFMPEG_ERROR' | 'WHISPER_ERROR' | 'STORAGE_ERROR' | 'NETWORK_ERROR' | 'FILE_SIZE_ERROR',
+    public originalError?: Error
+  ) {
+    super(message);
+    this.name = 'TranscriptionError';
+  }
+}
 
 export class TranscriptionService {
   private openai: OpenAI;
+  private readonly WHISPER_SIZE_LIMIT_MB = 25; // OpenAI Whisper API limit
+  private readonly PROCESSING_BUFFER_MB = 5; // Safety buffer for processing
 
   constructor(apiKey: string) {
     this.openai = new OpenAI({ apiKey });
@@ -45,22 +60,33 @@ export class TranscriptionService {
         ? allSegments.reduce((sum, seg) => sum + (seg.confidence || 0), 0) / allSegments.length
         : 0;
 
-      // Save transcript
-      await storage.createTranscript({
-        videoId,
-        segments: allSegments,
-        confidence: overallConfidence,
-        language: allSegments.length > 0 ? allSegments[0].language : 'en',
-      });
-
-      // Update video status
-      await storage.updateVideoTranscriptionStatus(videoId, "completed");
+      // Save transcript and update video status in a transaction
+      await this.saveTranscriptWithTransaction(videoId, allSegments, overallConfidence);
       console.log(`✅ Transcription completed: ${allSegments.length} segments total`)
 
     } catch (error) {
       console.error("Transcription error:", error);
       await storage.updateVideoTranscriptionStatus(videoId, "error");
-      throw error;
+      
+      // Re-throw as specific TranscriptionError if not already one
+      if (error instanceof TranscriptionError) {
+        throw error;
+      } else if (error instanceof Error) {
+        // Categorize the error based on its message/type
+        if (error.message.includes('FFmpeg') || error.message.includes('audio extraction')) {
+          throw new TranscriptionError(`Audio processing failed: ${error.message}`, 'FFMPEG_ERROR', error);
+        } else if (error.message.includes('Whisper') || error.message.includes('transcription')) {
+          throw new TranscriptionError(`Speech-to-text failed: ${error.message}`, 'WHISPER_ERROR', error);
+        } else if (error.message.includes('database') || error.message.includes('storage')) {
+          throw new TranscriptionError(`Storage operation failed: ${error.message}`, 'STORAGE_ERROR', error);
+        } else if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('download')) {
+          throw new TranscriptionError(`Network operation failed: ${error.message}`, 'NETWORK_ERROR', error);
+        } else {
+          throw new TranscriptionError(`Transcription failed: ${error.message}`, 'WHISPER_ERROR', error);
+        }
+      } else {
+        throw new TranscriptionError('Unknown transcription error occurred', 'WHISPER_ERROR');
+      }
     }
   }
 
@@ -188,24 +214,16 @@ export class TranscriptionService {
       console.log(`🔄 Sorting ${allSegments.length} segments by timestamp...`);
       const sortedSegments = allSegments.sort((a, b) => a.start - b.start);
       
-      // Clean up all temporary files
-      for (const audioPath of audioSegmentPaths) {
-        if (fs.existsSync(audioPath)) {
-          fs.unlinkSync(audioPath);
-        }
-      }
-
       console.log(`✅ Chunked transcription complete: ${sortedSegments.length} total segments`);
       return sortedSegments;
       
-    } catch (error) {
-      // Clean up on error
+    } finally {
+      // Guaranteed cleanup of all temporary files
       for (const audioPath of audioSegmentPaths) {
         if (fs.existsSync(audioPath)) {
           fs.unlinkSync(audioPath);
         }
       }
-      throw error;
     }
   }
 
@@ -226,26 +244,30 @@ export class TranscriptionService {
     // Download and convert to audio
     const audioPath = await this.downloadAndExtractAudio(videoUrl, videoId);
     
-    // Check if audio file is too large for Whisper (25MB limit)
-    const stats = fs.statSync(audioPath);
-    const fileSizeMB = stats.size / (1024 * 1024);
-    
-    let segments: any[] = [];
-    
-    if (fileSizeMB > 20) { // Leave 5MB buffer
-      console.log(`⚠️ Audio file is ${fileSizeMB.toFixed(2)}MB, splitting for Whisper API`);
-      segments = await this.transcribeLargeAudioFile(audioPath, 0);
-    } else {
-      console.log(`✅ Audio file is ${fileSizeMB.toFixed(2)}MB, transcribing directly`);
-      segments = await this.transcribeAudioFile(audioPath, 0);
+    try {
+      // Check if audio file is too large for Whisper (25MB limit)
+      const stats = fs.statSync(audioPath);
+      const fileSizeMB = stats.size / (1024 * 1024);
+      
+      let segments: any[] = [];
+      
+      const maxSizeMB = this.WHISPER_SIZE_LIMIT_MB - this.PROCESSING_BUFFER_MB;
+      
+      if (fileSizeMB > maxSizeMB) {
+        console.log(`⚠️ Audio file is ${fileSizeMB.toFixed(2)}MB, splitting for Whisper API`);
+        segments = await this.transcribeLargeAudioFile(audioPath, 0);
+      } else {
+        console.log(`✅ Audio file is ${fileSizeMB.toFixed(2)}MB, transcribing directly`);
+        segments = await this.transcribeAudioFile(audioPath, 0);
+      }
+      
+      return segments;
+    } finally {
+      // Guaranteed cleanup
+      if (fs.existsSync(audioPath)) {
+        fs.unlinkSync(audioPath);
+      }
     }
-
-    // Clean up temp file
-    if (fs.existsSync(audioPath)) {
-      fs.unlinkSync(audioPath);
-    }
-    
-    return segments;
   }
 
   /**
@@ -295,9 +317,10 @@ export class TranscriptionService {
   private async extractAudioWithFFmpeg(videoPath: string, audioPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       ffmpeg(videoPath)
-        .audioCodec('pcm_s16le') // WAV format, should be available on all systems
-        .audioChannels(1) // Mono for smaller file size
-        .audioFrequency(16000) // Lower sample rate for smaller files
+        .format('wav')
+        .audioCodec('pcm_s16le')
+        .audioChannels(1)
+        .audioFrequency(16000)
         .noVideo()
         .output(audioPath)
         .on('start', (cmd: string) => {
@@ -377,7 +400,8 @@ export class TranscriptionService {
           ffmpeg(audioPath)
             .seekInput(startTime)
             .duration(Math.min(chunkDuration, totalDuration - startTime))
-            .audioCodec('pcm_s16le') // WAV format
+            .format('wav')
+            .audioCodec('pcm_s16le')
             .output(chunkPath)
             .on('end', () => resolve())
             .on('error', (err: any) => reject(err))
@@ -420,9 +444,10 @@ export class TranscriptionService {
       }
       
       command
-        .audioCodec('pcm_s16le') // WAV format
-        .audioChannels(1) // Mono
-        .audioFrequency(16000) // 16kHz sample rate
+        .format('wav')
+        .audioCodec('pcm_s16le')
+        .audioChannels(1)
+        .audioFrequency(16000)
         .on('start', (cmd: string) => {
           console.log(`🚀 Audio concatenation started: ${cmd}`);
         })
@@ -490,5 +515,24 @@ export class TranscriptionService {
         secure: true
       });
     }
+  }
+
+  private async saveTranscriptWithTransaction(videoId: string, allSegments: any[], overallConfidence: number): Promise<void> {
+    const { db } = await import("../db");
+    
+    await db.transaction(async (tx) => {
+      // Create transcript
+      await tx.insert(transcripts).values({
+        videoId,
+        segments: allSegments,
+        confidence: overallConfidence,
+        language: allSegments.length > 0 ? allSegments[0].language : 'en',
+      });
+
+      // Update video transcription status
+      await tx.update(videos)
+        .set({ transcriptionStatus: "completed" })
+        .where(eq(videos.id, videoId));
+    });
   }
 }
