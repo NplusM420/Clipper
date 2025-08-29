@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
+import { sql } from "drizzle-orm";
 import {
   ObjectStorageService,
   ObjectNotFoundError,
@@ -14,6 +15,7 @@ import { VideoChunkingService } from "./services/videoChunkingService";
 import { initializeProgressService } from "./services/progressService";
 import { insertVideoSchema, insertClipSchema } from "@shared/schema";
 import { LIMITS } from "@shared/constants";
+import { validateBody, validateParams, validationSchemas, validateVideoFile, sanitizeFilename } from "./services/validationService";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -21,6 +23,31 @@ import path from "path";
 export async function registerRoutes(app: Express, io?: SocketServer): Promise<Server> {
   // Initialize progress service
   const progressService = initializeProgressService(io);
+
+  // Health check endpoint (no auth required)
+  app.get("/health", async (req, res) => {
+    try {
+      // Test database connection with a simple query
+      const { db } = await import("./db");
+      await db.execute(sql`SELECT 1`);
+
+      res.json({
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        services: {
+          database: "connected",
+          application: "running"
+        }
+      });
+    } catch (error) {
+      console.error("Health check failed:", error);
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: "Database connection failed"
+      });
+    }
+  });
 
   // Auth middleware
   await setupAuth(app);
@@ -48,6 +75,34 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
         return res.sendStatus(404);
       }
       return res.sendStatus(500);
+    }
+  });
+
+  // Video streaming endpoint for authenticated video playback
+  app.get("/api/videos/:videoId/stream", isAuthenticated, async (req: any, res) => {
+    try {
+      const video = await storage.getVideo(req.params.videoId);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      // Check if user owns the video
+      if (video.userId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Extract the Cloudinary public ID from originalPath
+      const objectFile = video.originalPath?.replace('/objects/', '') || '';
+      if (!objectFile) {
+        return res.status(404).json({ error: "Video file not found" });
+      }
+
+      // Use object storage to stream the video
+      const objectStorageService = new ObjectStorageService();
+      objectStorageService.downloadObjectEntity(objectFile, res);
+    } catch (error) {
+      console.error("Error streaming video:", error);
+      res.status(500).json({ error: "Failed to stream video" });
     }
   });
 
@@ -280,7 +335,17 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
 
       res.json(video);
     } catch (error) {
-      console.error("Error creating video:", error);
+      console.error("❌ Error creating video:", error);
+      
+      // If it's a Zod validation error, provide detailed info
+      if ((error as any).name === 'ZodError') {
+        console.error("🚨 Zod validation failed:", (error as any).errors);
+        return res.status(400).json({ 
+          error: "Invalid video data", 
+          details: (error as any).errors 
+        });
+      }
+      
       res.status(500).json({ error: "Failed to create video" });
     }
   });
@@ -316,8 +381,8 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
     }
   });
 
-  // Get video parts for chunked videos
-  app.get("/api/videos/:id/parts", isAuthenticated, async (req: any, res) => {
+  // Delete a video
+  app.delete("/api/videos/:id", isAuthenticated, async (req: any, res) => {
     try {
       const video = await storage.getVideo(req.params.id);
       if (!video) {
@@ -329,14 +394,186 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
         return res.status(403).json({ error: "Access denied" });
       }
 
+      console.log(`🗑️ Starting deletion of video: ${video.filename} (${req.params.id})`);
+
+      // Get all clips for this video before deletion
+      const clips = await storage.getVideoClips(req.params.id);
+      console.log(`📄 Found ${clips.length} clips to delete`);
+
+      // Get all video parts for chunked videos before deletion
+      const videoParts = video.isChunked ? await storage.getVideoParts(req.params.id) : [];
+      console.log(`📦 Found ${videoParts.length} video parts to delete`);
+
+      const objectStorage = new ObjectStorageService();
+      const deletionResults: string[] = [];
+
+      // Delete clips from Cloudinary
+      for (const clip of clips) {
+        if (clip.outputPath) {
+          try {
+            const publicId = objectStorage.extractPublicId(clip.outputPath);
+            await objectStorage.deleteFile(publicId, 'video');
+            deletionResults.push(`✅ Deleted clip: ${publicId}`);
+            console.log(`✅ Deleted clip from Cloudinary: ${publicId}`);
+          } catch (error) {
+            console.error(`❌ Failed to delete clip ${clip.id} from Cloudinary:`, error);
+            deletionResults.push(`❌ Failed to delete clip: ${clip.name}`);
+          }
+        }
+      }
+
+      // Delete video parts from Cloudinary (for chunked videos)
+      for (const part of videoParts) {
+        try {
+          await objectStorage.deleteFile(part.cloudinaryPublicId, 'video');
+          deletionResults.push(`✅ Deleted video part: ${part.cloudinaryPublicId}`);
+          console.log(`✅ Deleted video part from Cloudinary: ${part.cloudinaryPublicId}`);
+        } catch (error) {
+          console.error(`❌ Failed to delete video part ${part.id} from Cloudinary:`, error);
+          deletionResults.push(`❌ Failed to delete video part: ${part.cloudinaryPublicId}`);
+        }
+      }
+
+      // Delete main video from Cloudinary
+      if (video.originalPath && !video.isChunked) {
+        try {
+          const publicId = objectStorage.extractPublicId(video.originalPath);
+          await objectStorage.deleteFile(publicId, 'video');
+          deletionResults.push(`✅ Deleted main video: ${publicId}`);
+          console.log(`✅ Deleted main video from Cloudinary: ${publicId}`);
+        } catch (error) {
+          console.error(`❌ Failed to delete main video from Cloudinary:`, error);
+          deletionResults.push(`❌ Failed to delete main video: ${video.filename}`);
+        }
+      }
+
+      // Delete from database (this will cascade delete all related records)
+      await storage.deleteVideo(req.params.id);
+      console.log(`✅ Deleted video from database: ${req.params.id}`);
+      
+      res.json({ 
+        message: "Video deleted successfully",
+        cloudinaryResults: deletionResults,
+        deletedItems: {
+          video: video.filename,
+          clips: clips.length,
+          videoParts: videoParts.length
+        }
+      });
+    } catch (error) {
+      console.error("Error deleting video:", error);
+      res.status(500).json({ error: "Failed to delete video" });
+    }
+  });
+
+  // Debug endpoint to test database queries
+  app.get("/api/debug/video-parts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      console.log("🔧 DEBUG: Testing video parts query for ID:", req.params.id);
+      
+      // Test the storage method directly
+      const parts = await storage.getVideoParts(req.params.id);
+      console.log("🔧 DEBUG: Direct storage query result:", parts);
+      
+      // Test raw database query
+      const { videoParts } = require('../shared/schema');
+      const { eq } = require('drizzle-orm');
+      const db = require('./db').db;
+      
+      const rawParts = await db
+        .select()
+        .from(videoParts)
+        .where(eq(videoParts.videoId, req.params.id));
+      
+      console.log("🔧 DEBUG: Raw database query result:", rawParts);
+      
+      res.json({
+        storageMethod: parts,
+        rawQuery: rawParts,
+        videoId: req.params.id
+      });
+    } catch (error) {
+      console.error("🔧 DEBUG: Error in debug endpoint:", error);
+      res.status(500).json({ error: (error as any).message });
+    }
+  });
+
+  // Sync video data - fix mismatches between database and storage
+  app.post("/api/videos/:id/sync", isAuthenticated, async (req: any, res) => {
+    try {
+      const video = await storage.getVideo(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      // Check if user owns the video
+      if (video.userId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      let syncedData: { fixed: any[], issues: any[] } = { fixed: [], issues: [] };
+
+      if (video.isChunked) {
+        // Check if video parts exist
+        const parts = await storage.getVideoParts(req.params.id);
+        
+        if (parts.length === 0 && video.totalChunks && video.totalChunks > 0) {
+          // Video is marked as chunked but has no parts
+          // For now, mark it as non-chunked so it uses originalPath
+          await storage.updateVideo(req.params.id, { 
+            isChunked: false, 
+            totalChunks: 1 
+          });
+          
+          syncedData.fixed.push({
+            type: 'chunk_mismatch',
+            action: 'marked_as_non_chunked',
+            reason: 'No video parts found for chunked video'
+          });
+        }
+      }
+
+      const updatedVideo = await storage.getVideo(req.params.id);
+      res.json({ 
+        video: updatedVideo, 
+        syncResults: syncedData 
+      });
+      
+    } catch (error) {
+      console.error("Error syncing video:", error);
+      res.status(500).json({ error: "Failed to sync video data" });
+    }
+  });
+
+  // Get video parts for chunked videos
+  app.get("/api/videos/:id/parts", isAuthenticated, async (req: any, res) => {
+    try {
+      console.log(`🎬 GET /api/videos/${req.params.id}/parts - User: ${req.user.id}`);
+      
+      const video = await storage.getVideo(req.params.id);
+      if (!video) {
+        console.log("❌ Video not found");
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      // Check if user owns the video
+      if (video.userId !== req.user.id) {
+        console.log(`🚫 Access denied - Video owner: ${video.userId}, Request user: ${req.user.id}`);
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      console.log(`📹 Video found: ${video.filename}, isChunked: ${video.isChunked}, totalChunks: ${video.totalChunks}`);
+
       if (!video.isChunked) {
+        console.log("📄 Video is not chunked, returning empty array");
         return res.json([]);
       }
 
       const parts = await storage.getVideoParts(req.params.id);
+      console.log(`📦 Returning ${parts.length} video parts`);
       res.json(parts);
     } catch (error) {
-      console.error("Error fetching video parts:", error);
+      console.error("❌ Error fetching video parts:", error);
       res.status(500).json({ error: "Failed to fetch video parts" });
     }
   });
@@ -365,6 +602,48 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
     } catch (error) {
       console.error("Error updating transcript:", error);
       res.status(500).json({ error: "Failed to update transcript" });
+    }
+  });
+
+  // Manual transcription trigger endpoint
+  app.post("/api/videos/:id/transcribe", isAuthenticated, async (req: any, res) => {
+    try {
+      const videoId = req.params.id;
+      const userId = req.user.id;
+      
+      // Verify user owns the video
+      const video = await storage.getVideo(videoId);
+      if (!video || video.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Get user to check for OpenAI API key
+      const user = await storage.getUser(userId);
+      if (!user?.openaiApiKey) {
+        return res.status(400).json({ error: "OpenAI API key not configured. Please add your API key in Settings." });
+      }
+
+      // Check if already processing
+      if (video.transcriptionStatus === "processing") {
+        return res.status(400).json({ error: "Transcription already in progress" });
+      }
+
+      // Start transcription process
+      const transcriptionService = new TranscriptionService(user.openaiApiKey);
+      
+      // Run transcription in background and immediately return
+      transcriptionService.transcribeVideo(videoId, userId).catch(console.error);
+      
+      // Update status to processing
+      await storage.updateVideoTranscriptionStatus(videoId, "processing");
+      
+      res.json({ 
+        success: true, 
+        message: "Transcription started. This may take a few minutes to complete." 
+      });
+    } catch (error) {
+      console.error("Error starting transcription:", error);
+      res.status(500).json({ error: "Failed to start transcription" });
     }
   });
 
@@ -436,31 +715,23 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
   });
 
   // Settings endpoints
-  app.put("/api/settings/openai-key", isAuthenticated, async (req: any, res) => {
+  app.put("/api/settings/openai-key", isAuthenticated, validateBody(validationSchemas.updateApiKey), async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const { apiKey } = req.body;
+      const { apiKey } = req.validatedBody;
 
-      if (!apiKey) {
-        return res.status(400).json({ error: "API key is required" });
-      }
-
-      // Test the API key
+      // Test the API key format (additional validation is already done by validation middleware)
       try {
         const transcriptionService = new TranscriptionService(apiKey);
-        // Simple test - this would need a small test file
-        // For now, just validate the format
-        if (!apiKey.startsWith('sk-')) {
-          throw new Error('Invalid API key format');
-        }
+        // API key format is already validated by the validation middleware
       } catch (error) {
         return res.status(400).json({ error: "Invalid API key" });
       }
 
-      // Update user with encrypted API key (in production, encrypt this)
+      // Update user with encrypted API key
       await storage.upsertUser({
         id: userId,
-        openaiApiKey: apiKey, // Should be encrypted in production
+        openaiApiKey: apiKey, // Automatically encrypted by storage layer
       });
 
       res.json({ success: true });

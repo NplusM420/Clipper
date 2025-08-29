@@ -1,24 +1,108 @@
-🚀 FFmpeg started: ffmpeg -ss 1841.1866663750002 -i D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper\temp\upload_1756255404729.mp4 -y -acodec aac -b:a 96k -vcodec libx264 -b:v 800k -filter:v scale=w=1280:h=720 -t 263.02666662499996 -f mp4 -movflags +faststart -preset superfast -avoid_negative_ts make_zero -threads 0 -tune fastdecode -crf 30 D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper\temp\video_1756255407318_chunk_7.mp4
-📊 FFmpeg progress: 0% (00:00:02.33)
-📊 FFmpeg progress: 0% (00:00:06.52)
-📊 FFmpeg progress: 10% (00:03:22.70)
-📊 FFmpeg progress: 10% (00:03:27.61)
-📊 FFmpeg progress: 10% (00:03:32.43)
-📊 FFmpeg progress: 10% (00:03:38.04)
-✅ FFmpeg completed: video_1756255407318_chunk_7.mp4
-✅ Chunk 7 recreated with lower quality: 26.91MB
-✅ All 8 chunks created successfully
-📦 Created 8 chunks, uploading to Cloudinary...
-📤 Uploading chunk 1/8 (28530322 bytes)
-7:49:39 PM [express] GET /api/videos 304 in 734ms :: []
-7:49:45 PM [express] GET /api/videos 304 in 180ms :: []
-📤 Uploading chunk 2/8 (68928801 bytes)
-7:49:50 PM [express] GET /api/videos 304 in 195ms :: []
-7:50:01 PM [express] GET /api/videos 304 in 398ms :: []
-Cloudinary upload error: {
-  message: 'Video is too large to process synchronously, please use an eager transformation with eager_async=true to resolve',
-  name: 'Error',
-  http_code: 400
-}
-❌ Upload/chunking error: Error: Upload failed: Video is too large to process synchronously, please use an eager transformation with eager_async=true to resolve
-    at ObjectStorageService.uploadFile (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper/server/objectStorage.ts:1:1973)
+📦 Found video parts: 8 parts for videoId: 8a6e47d8-f8ff-4050-b656-de0020a73133
+📦 Returning 8 video parts
+6:05:40 PM [express] GET /api/videos/8a6e47d8-f8ff-4050-b656-de0020a73133/parts 304 in 344ms :: [{"i…
+6:05:41 PM [express] GET /api/videos/8a6e47d8-f8ff-4050-b656-de0020a73133/clips 304 in 310ms :: []
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 1: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 2/8 (263.02667s - 526.05334s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 2: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 3/8 (526.05334s - 789.08s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 3: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 4/8 (789.08s - 1052.1067s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 4: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 5/8 (1052.1067s - 1315.1333s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 5: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 6/8 (1315.1333s - 1578.16s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 6: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 7/8 (1578.16s - 1841.1866s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 7: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+🔄 Transcribing part 8/8 (1841.1866s - 2104.2134s)
+⬇️ Downloading video for audio extraction...
+🎵 Extracting audio from video...
+❌ FFmpeg audio extraction error: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+❌ Failed to transcribe part 8: Error: Audio codec mp3 is not available
+    at D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\fluent-ffmpeg\lib\capabilities.js:638:21
+    at fn (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:582:34)
+    at Immediate._onImmediate (D:\Clients\AI Layer Labs\Demos\ClipperBuild\Clipper_fresh\node_modules\async\lib\async.js:498:34)
+    at process.processImmediate (node:internal/timers:476:21)
+✅ Chunked transcription complete: 0 total segments
+✅ Transcription completed: 0 segments total

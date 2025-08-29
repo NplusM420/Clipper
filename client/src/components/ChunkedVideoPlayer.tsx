@@ -155,16 +155,22 @@ export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlaye
 
   // For non-chunked videos, use regular video element
   if (!video.isChunked) {
+    // Use the streaming endpoint for authenticated video access
+    const videoSrc = video.originalPath?.startsWith('/objects/') 
+      ? `/api/videos/${video.id}/stream`
+      : video.originalPath;
+
     return (
       <video
         ref={videoRef}
-        src={video.originalPath}
+        src={videoSrc}
         className={className}
         controls={controls}
         autoPlay={autoPlay}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         preload="metadata"
+        crossOrigin="use-credentials"
       />
     );
   }
@@ -174,6 +180,7 @@ export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlaye
     <div className="relative">
       <video
         ref={videoRef}
+        src={parts.length === 0 ? video.originalPath : undefined} // Fallback to original video if no parts
         className={className}
         controls={controls}
         autoPlay={autoPlay}
@@ -182,10 +189,10 @@ export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlaye
         preload="metadata"
       />
       
-      {/* Chunked video indicator */}
+      {/* Chunked video indicator - only show if parts are loaded */}
       {parts.length > 1 && (
         <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-          Part {currentPartIndex + 1} of {parts.length}
+          Part {Math.max(1, currentPartIndex + 1)} of {parts.length}
         </div>
       )}
     </div>

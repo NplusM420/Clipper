@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import connectPg from "connect-pg-simple";
+import { validateBody, validationSchemas } from './services/validationService';
 
 declare global {
   namespace Express {
@@ -84,13 +85,9 @@ export function setupAuth(app: Express) {
   });
 
   // Registration endpoint
-  app.post("/api/register", async (req, res, next) => {
+  app.post("/api/register", validateBody(validationSchemas.register), async (req, res, next) => {
     try {
-      const { username, password, email, firstName, lastName } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ error: "Username and password are required" });
-      }
+      const { username, password, email, firstName, lastName } = req.validatedBody;
 
       // Check if user already exists
       const existingUser = await storage.getUserByUsername(username);
@@ -119,7 +116,7 @@ export function setupAuth(app: Express) {
   });
 
   // Login endpoint
-  app.post("/api/login", passport.authenticate("local"), (req, res) => {
+  app.post("/api/login", validateBody(validationSchemas.login), passport.authenticate("local"), (req, res) => {
     const user = req.user as SelectUser;
     res.status(200).json({ id: user.id, username: user.username, email: user.email });
   });

@@ -207,16 +207,17 @@ export function ClipManager({
             </select>
           </div>
 
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
               Duration:{" "}
               <span className="font-mono" data-testid="text-duration">
                 {formatTime(calculateDuration())}
               </span>
-            </span>
-            <div className="flex space-x-2">
+            </div>
+            <div className="flex flex-col space-y-2">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => {
                   if (startTime !== undefined && endTime !== undefined) {
                     onPreviewClip({
@@ -229,9 +230,10 @@ export function ClipManager({
                 }}
                 disabled={startTime === undefined || endTime === undefined}
                 data-testid="button-preview-clip"
+                className="w-full"
               >
-                <Play className="h-4 w-4 mr-1" />
-                Preview
+                <Play className="h-4 w-4 mr-2" />
+                Preview Clip
               </Button>
               <Button
                 onClick={handleCreateClip}
@@ -242,8 +244,10 @@ export function ClipManager({
                   startTime >= endTime
                 }
                 data-testid="button-create-clip"
+                size="sm"
+                className="w-full"
               >
-                <Plus className="h-4 w-4 mr-1" />
+                <Plus className="h-4 w-4 mr-2" />
                 Create Clip
               </Button>
             </div>

@@ -47,38 +47,79 @@ export class ObjectStorageService {
         folder: options.folder || 'video-clipper',
         resource_type: options.resource_type || 'auto',
         public_id: options.public_id || randomUUID(),
+        eager_async: options.resource_type === 'video' ? true : options.eager_async, // Force async for all videos
         ...options.transformation && { transformation: options.transformation },
-        ...options // Include all other options like eager_async
+        ...options // Include all other options
       };
 
       let result;
       if (Buffer.isBuffer(fileInput)) {
-        // For large files, use the raw upload method instead of base64 encoding
-        // This is more efficient and doesn't have the base64 size overhead
+        // For Buffer input, use upload_stream with proper error handling
+        console.log(`📤 Uploading ${fileInput.length} bytes to Cloudinary via stream with options:`, JSON.stringify(uploadOptions, null, 2));
+        
         result = await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
             uploadOptions,
             (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
+              if (error) {
+                console.error('❌ Cloudinary stream error:', {
+                  message: error.message,
+                  http_code: error.http_code,
+                  name: error.name
+                });
+                reject(error);
+              } else {
+                console.log('✅ Cloudinary stream success:', { 
+                  public_id: result?.public_id, 
+                  bytes: result?.bytes,
+                  format: result?.format 
+                });
+                resolve(result);
+              }
             }
           );
-          uploadStream.end(fileInput);
+          
+          // Handle stream errors
+          uploadStream.on('error', (error) => {
+            console.error('❌ Upload stream error:', error);
+            reject(error);
+          });
+          
+          try {
+            uploadStream.end(fileInput);
+          } catch (streamError) {
+            console.error('❌ Stream end error:', streamError);
+            reject(streamError);
+          }
         });
       } else {
         // Upload from file path
+        console.log(`📤 Uploading file ${fileInput} to Cloudinary with options:`, JSON.stringify(uploadOptions, null, 2));
         result = await cloudinary.uploader.upload(fileInput, uploadOptions);
       }
       
+      console.log(`✅ Upload successful:`, { public_id: (result as any).public_id, bytes: (result as any).bytes, format: (result as any).format });
       return result;
     } catch (error: any) {
-      console.error('Cloudinary upload error:', error);
+      console.error('❌ Cloudinary upload error details:', {
+        message: error.message,
+        http_code: error.http_code,
+        name: error.name,
+        // uploadOptions: JSON.stringify(uploadOptions, null, 2)
+      });
       
-      // Handle specific error types
+      // Handle specific error types with more context
       if (error.http_code === 413) {
         throw new Error('File too large for upload. Please use a smaller file or upgrade your Cloudinary plan.');
-      } else if (error.http_code === 400 && error.message?.includes('Invalid')) {
-        throw new Error('Invalid file format. Please ensure you are uploading a valid MP4 video file.');
+      } else if (error.http_code === 400) {
+        if (error.message?.includes('too large to process synchronously')) {
+          console.log('🔄 Large video detected, should be using eager_async=true');
+          throw new Error('Video processing error: File is too large. Async processing should be enabled.');
+        } else if (error.message?.includes('Invalid')) {
+          throw new Error('Invalid file format. Please ensure you are uploading a valid MP4 video file.');
+        } else {
+          throw new Error(`Upload validation error: ${error.message}`);
+        }
       } else if (error.http_code === 401) {
         throw new Error('Cloudinary authentication failed. Please check your API credentials.');
       } else {
@@ -94,15 +135,14 @@ export class ObjectStorageService {
     quality?: string;
     resource_type?: string;
   } = {}): Promise<any> {
+    // RESEARCH FINDING: For videos >40MB (free) or >100MB (paid), avoid incoming transformations
+    // Instead, upload raw and generate transformed URLs on-demand
     return this.uploadFile(fileInput, {
       ...options,
       resource_type: 'video',
       folder: options.folder || 'video-clipper/videos',
-      eager_async: true, // Process videos asynchronously to avoid timeout
-      transformation: {
-        quality: options.quality || 'auto',
-        fetch_format: 'auto'
-      }
+      // NO transformations during upload - this prevents "too large to process synchronously" errors
+      // Transformations can be applied on-demand via URL parameters
     });
   }
 
@@ -112,14 +152,12 @@ export class ObjectStorageService {
     public_id?: string;
     quality?: string;
   } = {}): Promise<any> {
+    // RESEARCH FINDING: Upload clips raw to avoid transformation limits
     return this.uploadFile(filePath, {
       ...options,
       resource_type: 'video',
       folder: options.folder || 'video-clipper/clips',
-      transformation: {
-        quality: options.quality || 'auto',
-        fetch_format: 'auto'
-      }
+      // NO transformations during upload - generate optimized URLs on-demand
     });
   }
 
@@ -199,6 +237,27 @@ export class ObjectStorageService {
       resource_type: options.resource_type || 'video',
       secure: options.secure !== false,
       ...options.transformation && { transformation: options.transformation }
+    });
+  }
+
+  // Generate an optimized video URL with automatic quality and format
+  generateOptimizedVideoUrl(publicId: string, options: {
+    quality?: string;
+    format?: string;
+    width?: number;
+    height?: number;
+    crop?: string;
+  } = {}): string {
+    return cloudinary.url(publicId, {
+      resource_type: 'video',
+      secure: true,
+      transformation: {
+        quality: options.quality || 'auto',
+        fetch_format: options.format || 'auto',
+        ...options.width && { width: options.width },
+        ...options.height && { height: options.height },
+        ...options.crop && { crop: options.crop }
+      }
     });
   }
 
@@ -324,6 +383,39 @@ export class ObjectStorageService {
       console.error('Error listing files:', error);
       throw new Error('Failed to list files from Cloudinary');
     }
+  }
+
+  // Extract public ID from various path formats
+  extractPublicId(path: string): string {
+    // If it's already a Cloudinary public ID, return as is
+    if (!path.includes('/') && !path.includes('http') && !path.includes('.')) {
+      return path;
+    }
+    
+    // If it's a full Cloudinary URL, extract the public ID
+    if (path.includes('cloudinary.com')) {
+      const urlParts = path.split('/');
+      const versionIndex = urlParts.findIndex(part => part.startsWith('v'));
+      
+      if (versionIndex !== -1 && versionIndex < urlParts.length - 1) {
+        // Get everything after the version number, remove file extension
+        const publicIdWithExt = urlParts.slice(versionIndex + 1).join('/');
+        return publicIdWithExt.replace(/\.[^/.]+$/, ''); // Remove file extension
+      }
+    }
+    
+    // If it's a path like /objects/something, extract the ID
+    if (path.startsWith('/objects/')) {
+      return path.replace('/objects/', '');
+    }
+    
+    // If it contains a folder structure, preserve it but remove extension
+    if (path.includes('/')) {
+      return path.replace(/\.[^/.]+$/, ''); // Remove file extension
+    }
+    
+    // Default: assume it's already a public ID, just remove extension if present
+    return path.replace(/\.[^/.]+$/, '');
   }
 }
 

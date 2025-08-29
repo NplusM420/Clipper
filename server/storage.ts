@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
+import { EncryptionService } from "./services/encryptionService";
 
 export interface IStorage {
   // User operations
@@ -33,6 +34,8 @@ export interface IStorage {
   getUserVideos(userId: string): Promise<Video[]>;
   updateVideoStatus(id: string, status: string): Promise<void>;
   updateVideoTranscriptionStatus(id: string, status: string): Promise<void>;
+  updateVideo(id: string, data: Partial<InsertVideo>): Promise<void>;
+  deleteVideo(id: string): Promise<void>;
   
   // Transcript operations
   createTranscript(transcript: InsertTranscript): Promise<Transcript>;
@@ -58,17 +61,56 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // User operations
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, id));
+      if (user && user.openaiApiKey) {
+        try {
+          // Decrypt API key transparently
+          user.openaiApiKey = EncryptionService.decrypt(user.openaiApiKey);
+        } catch (error) {
+          console.warn('Failed to decrypt API key for user:', id);
+          user.openaiApiKey = null;
+        }
+      }
+      return user;
+    } catch (error) {
+      console.error('Database error getting user:', error);
+      return undefined;
+    }
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
+    try {
+      const [user] = await db.select().from(users).where(eq(users.username, username));
+      if (user && user.openaiApiKey) {
+        try {
+          // Decrypt API key transparently
+          user.openaiApiKey = EncryptionService.decrypt(user.openaiApiKey);
+        } catch (error) {
+          console.warn('Failed to decrypt API key for user:', username);
+          user.openaiApiKey = null;
+        }
+      }
+      return user;
+    } catch (error) {
+      console.error('Database error getting user by username:', error);
+      return undefined;
+    }
   }
 
   async createUser(userData: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(userData).returning();
+    // Encrypt API key if provided
+    const createData = { ...userData };
+    if (createData.openaiApiKey) {
+      try {
+        createData.openaiApiKey = EncryptionService.encrypt(createData.openaiApiKey);
+      } catch (error) {
+        console.error('Failed to encrypt API key:', error);
+        throw new Error('Failed to secure API key');
+      }
+    }
+    
+    const [user] = await db.insert(users).values(createData).returning();
     return user;
   }
 
@@ -86,10 +128,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(id: string, userData: Partial<InsertUser>): Promise<User> {
+    // Encrypt API key if provided
+    const updateData = { ...userData };
+    if (updateData.openaiApiKey) {
+      try {
+        updateData.openaiApiKey = EncryptionService.encrypt(updateData.openaiApiKey);
+      } catch (error) {
+        console.error('Failed to encrypt API key:', error);
+        throw new Error('Failed to secure API key');
+      }
+    }
+    
     const [user] = await db
       .update(users)
       .set({
-        ...userData,
+        ...updateData,
         updatedAt: new Date(),
       })
       .where(eq(users.id, id))
@@ -131,6 +184,18 @@ export class DatabaseStorage implements IStorage {
       .update(videos)
       .set({ transcriptionStatus: status, updatedAt: new Date() })
       .where(eq(videos.id, id));
+  }
+
+  async updateVideo(id: string, data: Partial<InsertVideo>): Promise<void> {
+    await db
+      .update(videos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(videos.id, id));
+  }
+
+  async deleteVideo(id: string): Promise<void> {
+    await db.delete(videos).where(eq(videos.id, id));
+    // Note: Cascade deletes will handle video_parts, transcripts, and clips automatically
   }
 
   // Transcript operations
@@ -217,11 +282,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVideoParts(videoId: string): Promise<VideoPart[]> {
-    return await db
+    console.log('🔍 Querying video parts for videoId:', videoId);
+    
+    // First, let's see what video IDs exist in video_parts table
+    const allParts = await db.select().from(videoParts).limit(10);
+    console.log('🔍 All video parts in DB (first 10):', allParts.map(p => ({ id: p.id, videoId: p.videoId, partIndex: p.partIndex })));
+    
+    const parts = await db
       .select()
       .from(videoParts)
       .where(eq(videoParts.videoId, videoId))
       .orderBy(videoParts.partIndex);
+    console.log('📦 Found video parts:', parts.length, 'parts for videoId:', videoId);
+    return parts;
   }
 
   async updateVideoPartStatus(id: string, status: string): Promise<void> {

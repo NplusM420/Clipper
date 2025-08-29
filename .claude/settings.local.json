@@ -15,7 +15,22 @@
       "Bash(npx drizzle-kit:*)",
       "Bash(node:*)",
       "Bash(npx tsx:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "WebSearch",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "WebFetch(domain:local.drizzle.studio)",
+      "Bash(curl:*)",
+      "Bash(npm run dev:*)",
+      "Bash(sudo rm:*)",
+      "Bash(chmod:*)",
+      "Bash(npm cache clean:*)",
+      "Bash(npx update-browserslist-db:*)",
+      "Bash(NODE_ENV=development npx tsx server/index.ts)",
+      "Bash(rsync:*)",
+      "Bash(touch:*)",
+      "Bash(timeout 10s npm run dev)"
     ],
     "additionalDirectories": [
       "/mnt/d/Clients"

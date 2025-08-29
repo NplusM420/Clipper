@@ -6,13 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Video, Scissors, Clock } from "lucide-react";
 
 export default function AuthPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
@@ -24,8 +25,9 @@ export default function AuthPage() {
         title: "Welcome back!",
         description: "Login successful",
       });
-      // Force refresh user data and redirect
-      window.location.href = "/";
+      // Invalidate auth query to refresh user data
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      // Router will automatically redirect to Dashboard when isAuthenticated becomes true
     },
     onError: (error: any) => {
       toast({
@@ -46,8 +48,9 @@ export default function AuthPage() {
         title: "Account created!",
         description: "Welcome to Video Clipper Tool! You're now logged in.",
       });
-      // Force refresh user data and redirect immediately after registration
-      window.location.href = "/";
+      // Invalidate auth query to refresh user data
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      // Router will automatically redirect to Dashboard when isAuthenticated becomes true
     },
     onError: (error: any) => {
       toast({

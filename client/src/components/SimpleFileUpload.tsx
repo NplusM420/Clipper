@@ -29,10 +29,11 @@ export function SimpleFileUpload({
   // Handle upload completion based on socket progress
   useEffect(() => {
     if (socketProgress?.phase === 'complete' && isUploading) {
-      // Upload completed via socket, we can finish the process
-      setIsUploading(false);
-      setCurrentUploadId(null);
-      clearProgress();
+      // Socket progress indicates upload is complete, but we still need to wait
+      // for the XHR completion handler to process the result and call onUploadComplete
+      // Only clear the progress display, but keep isUploading true until XHR completes
+      console.log('🔗 Socket progress complete, waiting for XHR completion...');
+      // Don't set isUploading(false) here - let XHR completion handle it
     }
   }, [socketProgress, isUploading, clearProgress]);
 
@@ -174,6 +175,10 @@ export function SimpleFileUpload({
             onUploadComplete(video);
             setSelectedFile(null);
             setUploadProgress(0);
+            
+            // Clean up upload tracking
+            setCurrentUploadId(null);
+            clearProgress();
           } catch (error) {
             console.error("Failed to create video record:", error);
             toast({

@@ -151,12 +151,16 @@ export function VideoPlayer({
         ) : (
           // No video source provided
           <div className="w-full h-full flex items-center justify-center text-white">
-            No video selected
+            <div className="text-center">
+              <div className="text-lg mb-2">No video selected</div>
+              <div className="text-sm text-gray-400">Select a video from the list to start watching</div>
+            </div>
           </div>
         )}
         
-        {/* Timeline Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/70 backdrop-blur-sm p-4">
+        {/* Timeline Overlay - Only show when video is available */}
+        {(video || src) && (
+          <div className="absolute bottom-0 left-0 right-0 bg-black/70 backdrop-blur-sm p-4">
           {/* Timeline with Clip Markers */}
           <div className="relative mb-4">
             <Slider
@@ -282,6 +286,7 @@ export function VideoPlayer({
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
