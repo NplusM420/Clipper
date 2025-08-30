@@ -16,12 +16,14 @@ import {
 
 export interface ProgressEvent {
   uploadId: string;
-  phase: 'upload' | 'analysis' | 'chunking' | 'ffmpeg' | 'cloudinary' | 'database' | 'complete';
+  phase: 'upload' | 'analysis' | 'chunking' | 'ffmpeg' | 'cloudinary' | 'database' | 'complete' | 'processing';
   message: string;
   progress: number;
   currentStep?: number;
   totalSteps?: number;
   details?: any;
+  stage?: string;
+  estimatedTimeRemaining?: number;
 }
 
 interface EnhancedProgressTrackerProps {
@@ -71,10 +73,16 @@ const phaseConfig = {
     title: "Complete",
     color: "bg-emerald-500",
     description: "Video upload and processing completed successfully!"
+  },
+  processing: {
+    icon: Loader2,
+    title: "Processing",
+    color: "bg-blue-500",
+    description: "Processing video transcription and analysis"
   }
 } as const;
 
-const phaseOrder = ['upload', 'analysis', 'chunking', 'ffmpeg', 'cloudinary', 'database', 'complete'] as const;
+const phaseOrder = ['upload', 'analysis', 'chunking', 'ffmpeg', 'cloudinary', 'database', 'processing', 'complete'] as const;
 
 export function EnhancedProgressTracker({ 
   currentProgress, 

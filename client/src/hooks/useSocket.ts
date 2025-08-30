@@ -38,10 +38,24 @@ export function useSocket(): UseSocketReturn {
       setConnected(false);
     });
 
-    // Progress event handler
+    // Progress event handlers
     socket.on('upload-progress', (progress: ProgressEvent) => {
-      console.log('📊 Progress update:', progress);
+      console.log('📊 Upload progress update:', progress);
       setLatestProgress(progress);
+    });
+
+    socket.on('transcription_progress', (progress: any) => {
+      console.log('🎤 Transcription progress update:', progress);
+      // Convert transcription progress to ProgressEvent format for consistency
+      const progressEvent: ProgressEvent = {
+        phase: progress.stage === 'transcription_complete' ? 'complete' : 'processing',
+        progress: progress.progress,
+        message: progress.message || `${progress.stage}...`,
+        uploadId: progress.videoId,
+        stage: progress.stage,
+        estimatedTimeRemaining: progress.estimatedTime,
+      };
+      setLatestProgress(progressEvent);
     });
 
     // Cleanup on unmount
@@ -70,6 +84,32 @@ export function useUploadProgress(uploadId?: string): {
       setCurrentProgress(latestProgress);
     }
   }, [latestProgress, uploadId]);
+
+  const clearProgress = () => {
+    setCurrentProgress(null);
+  };
+
+  return {
+    progress: currentProgress,
+    clearProgress
+  };
+}
+
+export function useTranscriptionProgress(videoId?: string): {
+  progress: ProgressEvent | null;
+  clearProgress: () => void;
+} {
+  const { latestProgress } = useSocket();
+  const [currentProgress, setCurrentProgress] = useState<ProgressEvent | null>(null);
+
+  useEffect(() => {
+    if (latestProgress && (!videoId || latestProgress.uploadId === videoId)) {
+      // Only update for transcription-related progress
+      if (latestProgress.stage && latestProgress.stage.includes('transcription')) {
+        setCurrentProgress(latestProgress);
+      }
+    }
+  }, [latestProgress, videoId]);
 
   const clearProgress = () => {
     setCurrentProgress(null);

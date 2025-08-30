@@ -10,6 +10,7 @@ import { UploadModal } from "@/components/UploadModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { ManualTranscriptionButton } from "@/components/ManualTranscriptionButton";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranscriptionProgress } from "@/hooks/useSocket";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -38,6 +39,9 @@ export default function Dashboard() {
 
   // State management
   const [selectedVideo, setSelectedVideo] = useState<VideoType | null>(null);
+  
+  // Monitor transcription progress for the selected video
+  const { progress: transcriptionProgress } = useTranscriptionProgress(selectedVideo?.id);
   const [currentTime, setCurrentTime] = useState(0);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -91,10 +95,37 @@ export default function Dashboard() {
     }
   }, [videos, selectedVideo]);
 
+  // Handle transcription completion via WebSocket
+  useEffect(() => {
+    if (transcriptionProgress?.phase === 'complete' && selectedVideo?.id) {
+      console.log('🎉 Transcription completed via WebSocket, refreshing data...');
+      
+      // Invalidate and refetch video data to update transcriptionStatus
+      queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+      
+      // Invalidate and refetch transcript data
+      queryClient.invalidateQueries({ queryKey: ["/api/videos", selectedVideo.id, "transcript"] });
+      
+      // Show success toast
+      toast({
+        title: "Transcription Complete",
+        description: `Transcription finished for ${selectedVideo.filename}`,
+      });
+    }
+  }, [transcriptionProgress, selectedVideo, queryClient, toast]);
+
   // Fetch transcript for selected video
   const { data: transcript } = useQuery<Transcript>({
     queryKey: ["/api/videos", selectedVideo?.id, "transcript"],
     enabled: !!selectedVideo?.id,
+    refetchInterval: (data) => {
+      // Poll every 3 seconds if no transcript exists or video is still transcribing
+      if (!data || selectedVideo?.transcriptionStatus === "processing") {
+        return 3000;
+      }
+      // Stop polling if transcript exists and transcription is complete
+      return false;
+    },
   });
 
   // Fetch clips for selected video
