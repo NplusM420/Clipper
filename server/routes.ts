@@ -329,6 +329,17 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
       const user = await storage.getUser(userId);
       if (user?.openaiApiKey) {
         const transcriptionService = new TranscriptionService(user.openaiApiKey);
+        
+        // Set up real-time progress tracking
+        if (io) {
+          transcriptionService.setProgressCallback((videoId, progress) => {
+            io.to(`user:${userId}`).emit('transcription_progress', {
+              videoId,
+              ...progress
+            });
+          });
+        }
+        
         // Run transcription in background
         transcriptionService.transcribeVideo(video.id, userId).catch(console.error);
       }
@@ -630,6 +641,16 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
 
       // Start transcription process
       const transcriptionService = new TranscriptionService(user.openaiApiKey);
+      
+      // Set up real-time progress tracking
+      if (io) {
+        transcriptionService.setProgressCallback((videoId, progress) => {
+          io.to(`user:${userId}`).emit('transcription_progress', {
+            videoId,
+            ...progress
+          });
+        });
+      }
       
       // Run transcription in background and immediately return
       transcriptionService.transcribeVideo(videoId, userId).catch(console.error);
