@@ -153,8 +153,10 @@ export class ObjectStorageService {
     quality?: string;
   } = {}): Promise<any> {
     // RESEARCH FINDING: Upload clips raw to avoid transformation limits
+    // Note: quality parameter is ignored for upload - it's already applied during FFmpeg processing
+    const { quality, ...uploadOptions } = options;
     return this.uploadFile(filePath, {
-      ...options,
+      ...uploadOptions,
       resource_type: 'video',
       folder: options.folder || 'video-clipper/clips',
       // NO transformations during upload - generate optimized URLs on-demand
@@ -287,17 +289,24 @@ export class ObjectStorageService {
   } = {}): Promise<void> {
     try {
       const fileInfo = await this.getFileInfo(publicId, options.resource_type);
-      const fileUrl = this.generateUrl(publicId, options);
-
-      // Set appropriate headers
-      res.set({
-        'Content-Type': fileInfo.format === 'mp4' ? 'video/mp4' : 'application/octet-stream',
-        'Content-Length': fileInfo.bytes,
-        'Cache-Control': 'public, max-age=3600',
+      const fileUrl = this.generateOptimizedVideoUrl(publicId, {
+        quality: 'auto',
+        format: 'auto'
       });
 
-      // Redirect to Cloudinary URL or proxy the content
-      res.redirect(fileUrl);
+      // PERFORMANCE FIX: For videos, use 302 redirect to direct Cloudinary URL
+      // This allows the browser to handle range requests directly with Cloudinary
+      // which supports proper video streaming and seeking
+      console.log(`🎥 Redirecting video stream to optimized Cloudinary URL: ${fileUrl}`);
+      
+      // Set proper headers for video streaming
+      res.set({
+        'Cache-Control': 'public, max-age=3600',
+        'Accept-Ranges': 'bytes',  // Important for video seeking
+      });
+
+      // Redirect to optimized Cloudinary URL - this supports range requests
+      res.redirect(302, fileUrl);
     } catch (error) {
       console.error('Error downloading file:', error);
       if (!res.headersSent) {

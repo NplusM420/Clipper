@@ -19,6 +19,76 @@ import { validateBody, validateParams, validationSchemas, validateVideoFile, san
 import multer from "multer";
 import fs from "fs";
 import path from "path";
+import ffmpeg from "fluent-ffmpeg";
+import https from "https";
+import http from "http";
+
+// Helper functions for seamless video concatenation
+async function downloadFile(url: string, outputPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const file = fs.createWriteStream(outputPath);
+    
+    const request = client.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Download failed with status ${response.statusCode}`));
+        return;
+      }
+      
+      response.pipe(file);
+      
+      file.on('finish', () => {
+        file.close();
+        resolve();
+      });
+      
+      file.on('error', (err) => {
+        fs.unlink(outputPath, () => {}); // Clean up on error
+        reject(err);
+      });
+    });
+    
+    request.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+async function concatenateWithFFmpeg(concatListPath: string, outputPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('FFmpeg concatenation timeout'));
+    }, 10 * 60 * 1000); // 10 minute timeout
+
+    ffmpeg()
+      .input(concatListPath)
+      .inputOptions(['-f', 'concat', '-safe', '0'])
+      .videoCodec('copy') // Copy without re-encoding for speed
+      .audioCodec('copy') // Copy without re-encoding for speed  
+      .format('mp4')
+      .outputOptions(['-movflags', '+faststart']) // Optimize for streaming
+      .on('start', (commandLine) => {
+        console.log(`🚀 FFmpeg concatenation started: ${commandLine}`);
+      })
+      .on('progress', (progress) => {
+        if (progress.percent && progress.percent % 25 === 0) {
+          console.log(`📊 Concatenation progress: ${Math.round(progress.percent)}%`);
+        }
+      })
+      .on('end', () => {
+        clearTimeout(timeout);
+        console.log(`✅ FFmpeg concatenation completed`);
+        resolve();
+      })
+      .on('error', (err, stdout, stderr) => {
+        clearTimeout(timeout);
+        console.error(`❌ FFmpeg concatenation error:`, err.message);
+        console.error(`📝 FFmpeg stderr:`, stderr);
+        reject(err);
+      })
+      .save(outputPath);
+  });
+}
 
 export async function registerRoutes(app: Express, io?: SocketServer): Promise<Server> {
   // Initialize progress service
@@ -589,6 +659,120 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
     }
   });
 
+  // SMART SOLUTION: Seamless video playback endpoint
+  app.get("/api/videos/:id/playback", isAuthenticated, async (req: any, res) => {
+    try {
+      console.log(`🎬 GET /api/videos/${req.params.id}/playback - User: ${req.user.id}`);
+      
+      const video = await storage.getVideo(req.params.id);
+      if (!video || video.userId !== req.user.id) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      // For non-chunked videos, return the original path
+      if (!video.isChunked) {
+        return res.json({ playbackUrl: video.originalPath, isSeamless: false });
+      }
+
+      // For chunked videos, provide seamless playback URL
+      console.log(`📹 Chunked video detected, providing seamless playback`);
+      const seamlessUrl = `/api/videos/${req.params.id}/seamless`;
+      res.json({ 
+        playbackUrl: seamlessUrl,
+        isSeamless: true,
+        message: "Using seamless concatenated playback"
+      });
+
+    } catch (error) {
+      console.error("❌ Error getting video playback:", error);
+      res.status(500).json({ error: "Failed to get video playback" });
+    }
+  });
+
+  // Serve seamless concatenated video
+  app.get("/api/videos/:id/seamless", isAuthenticated, async (req: any, res) => {
+    try {
+      const video = await storage.getVideo(req.params.id);
+      if (!video || video.userId !== req.user.id) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      if (!video.isChunked) {
+        // Redirect to original for non-chunked videos
+        return res.redirect(video.originalPath || '');
+      }
+
+      // For chunked videos: concatenate chunks to create seamless video
+      console.log(`🔗 Creating seamless video from ${video.totalChunks} chunks`);
+      
+      const parts = await storage.getVideoParts(req.params.id);
+      if (parts.length === 0) {
+        return res.status(404).json({ error: "No video parts found" });
+      }
+
+      // Import video chunking service
+      const { VideoChunkingService } = await import('./services/videoChunkingService');
+      const chunkingService = new VideoChunkingService();
+      
+      // Download and concatenate chunks
+      const tempDir = path.join(process.cwd(), 'temp');
+      
+      // Ensure temp directory exists
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const concatenatedPath = path.join(tempDir, `${req.params.id}_seamless.mp4`);
+      
+      // Check if concatenated video already exists (caching)
+      if (fs.existsSync(concatenatedPath)) {
+        console.log('✅ Using cached concatenated video');
+        return res.sendFile(concatenatedPath);
+      }
+
+      console.log('🔄 Downloading and concatenating chunks...');
+      
+      // Sort parts by partIndex to ensure correct order
+      const sortedParts = parts.sort((a, b) => a.partIndex - b.partIndex);
+      
+      // Download all chunks from Cloudinary
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'dapernzun';
+      const chunkPaths: string[] = [];
+      
+      for (let i = 0; i < sortedParts.length; i++) {
+        const part = sortedParts[i];
+        const chunkUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${part.cloudinaryPublicId}`;
+        const chunkPath = path.join(tempDir, `${req.params.id}_chunk_${part.partIndex}.mp4`);
+        
+        console.log(`📥 Downloading chunk ${i + 1}/${sortedParts.length}: ${part.cloudinaryPublicId}`);
+        await downloadFile(chunkUrl, chunkPath);
+        chunkPaths.push(chunkPath);
+      }
+
+      // Create concat list file for FFmpeg
+      const concatListPath = path.join(tempDir, `${req.params.id}_concat_list.txt`);
+      const concatList = chunkPaths.map(p => `file '${p}'`).join('\n');
+      fs.writeFileSync(concatListPath, concatList);
+
+      // Concatenate using FFmpeg
+      console.log('🔗 Concatenating chunks with FFmpeg...');
+      await concatenateWithFFmpeg(concatListPath, concatenatedPath);
+
+      // Clean up temporary files
+      chunkPaths.forEach(p => {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      });
+      if (fs.existsSync(concatListPath)) fs.unlinkSync(concatListPath);
+
+      console.log('✅ Seamless video created, serving file');
+      res.sendFile(concatenatedPath);
+
+    } catch (error) {
+      console.error("❌ Error creating seamless video:", error);
+      res.status(500).json({ error: "Failed to create seamless video" });
+    }
+  });
+
   // Transcript endpoints
   app.get("/api/videos/:id/transcript", isAuthenticated, async (req: any, res) => {
     try {
@@ -717,6 +901,36 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
     } catch (error) {
       console.error("Error fetching clips:", error);
       res.status(500).json({ error: "Failed to fetch clips" });
+    }
+  });
+
+  // Download clip endpoint
+  app.get("/api/clips/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const clip = await storage.getClip(req.params.id);
+      if (!clip || clip.userId !== req.user.id) {
+        return res.status(404).json({ error: "Clip not found" });
+      }
+
+      if (clip.status !== "ready" || !clip.outputPath) {
+        return res.status(404).json({ error: "Clip not ready for download" });
+      }
+
+      // Generate Cloudinary URL from the public_id stored in outputPath
+      const objectStorage = new ObjectStorageService();
+      const downloadUrl = objectStorage.generateUrl(clip.outputPath, {
+        resource_type: 'video',
+        secure: true
+      });
+
+      console.log(`📥 Clip download: ${clip.name} (${clip.id}) -> ${downloadUrl}`);
+      
+      // Set proper download headers and redirect
+      res.setHeader('Content-Disposition', `attachment; filename="${clip.name}.mp4"`);
+      res.redirect(downloadUrl);
+    } catch (error) {
+      console.error("Error downloading clip:", error);
+      res.status(500).json({ error: "Failed to download clip" });
     }
   });
 

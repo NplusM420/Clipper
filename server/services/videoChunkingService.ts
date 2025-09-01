@@ -337,4 +337,98 @@ export class VideoChunkingService {
     const targetDuration = (VideoChunkingService.MAX_CHUNK_SIZE * 8) / estimatedBitrate;
     return Math.min(targetDuration, totalDuration);
   }
+
+  /**
+   * SMART SOLUTION: Concatenates video chunks back into a single seamless video for playback
+   * This eliminates all chunking complexity from the client-side
+   */
+  async concatenateChunksForPlayback(videoId: string, chunks: VideoChunk[]): Promise<string> {
+    console.log(`🔧 Concatenating ${chunks.length} chunks for seamless playback`);
+    
+    if (chunks.length === 0) {
+      throw new Error('No chunks to concatenate');
+    }
+
+    if (chunks.length === 1) {
+      console.log('📹 Single chunk - returning original file');
+      return chunks[0].filePath;
+    }
+
+    // Sort chunks by index to ensure correct order
+    const sortedChunks = chunks.sort((a, b) => a.index - b.index);
+    
+    const outputPath = path.join(this.tempDir, `${videoId}_concatenated.mp4`);
+    
+    // Check if concatenated file already exists (caching)
+    if (fs.existsSync(outputPath)) {
+      console.log('✅ Using cached concatenated file');
+      return outputPath;
+    }
+
+    console.log(`🔗 Creating concatenated video: ${outputPath}`);
+
+    // Create a text file listing all chunks for FFmpeg concat
+    const concatListPath = path.join(this.tempDir, `${videoId}_concat_list.txt`);
+    const concatList = sortedChunks.map(chunk => `file '${chunk.filePath}'`).join('\n');
+    fs.writeFileSync(concatListPath, concatList);
+
+    try {
+      await this.concatenateWithFFmpeg(concatListPath, outputPath);
+      
+      // Clean up the concat list file
+      fs.unlinkSync(concatListPath);
+      
+      console.log(`✅ Successfully concatenated ${chunks.length} chunks into seamless video`);
+      return outputPath;
+    } catch (error) {
+      // Clean up on error
+      if (fs.existsSync(concatListPath)) {
+        fs.unlinkSync(concatListPath);
+      }
+      if (fs.existsSync(outputPath)) {
+        fs.unlinkSync(outputPath);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Uses FFmpeg to concatenate video files seamlessly
+   */
+  private async concatenateWithFFmpeg(concatListPath: string, outputPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.error(`⏰ FFmpeg concatenation timeout`);
+        reject(new Error('FFmpeg concatenation timeout'));
+      }, 5 * 60 * 1000); // 5 minute timeout
+
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .videoCodec('copy') // Copy without re-encoding for speed
+        .audioCodec('copy') // Copy without re-encoding for speed
+        .format('mp4')
+        .outputOptions(['-movflags', '+faststart']) // Optimize for streaming
+        .on('start', (commandLine) => {
+          console.log(`🚀 FFmpeg concatenation started: ${commandLine}`);
+        })
+        .on('progress', (progress) => {
+          if (progress.percent && progress.percent % 20 === 0) { // Report every 20%
+            console.log(`📊 Concatenation progress: ${Math.round(progress.percent)}%`);
+          }
+        })
+        .on('end', () => {
+          clearTimeout(timeout);
+          console.log(`✅ FFmpeg concatenation completed`);
+          resolve();
+        })
+        .on('error', (err, stdout, stderr) => {
+          clearTimeout(timeout);
+          console.error(`❌ FFmpeg concatenation error:`, err.message);
+          console.error(`📝 FFmpeg stderr:`, stderr);
+          reject(err);
+        })
+        .save(outputPath);
+    });
+  }
 }

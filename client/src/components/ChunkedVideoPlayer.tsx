@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
-import { VideoChunkingService, VideoPart } from "@/services/videoChunkingService";
 import { Video as VideoType } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 interface ChunkedVideoPlayerProps {
   video: VideoType;
@@ -12,135 +12,125 @@ interface ChunkedVideoPlayerProps {
   autoPlay?: boolean;
 }
 
-export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlayerProps>(({
-  video,
-  currentTime,
-  onTimeUpdate,
-  onLoadedMetadata,
-  className,
-  controls = true,
-  autoPlay = false
-}, ref) => {
+export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlayerProps>((
+  {
+    video,
+    currentTime,
+    onTimeUpdate,
+    onLoadedMetadata,
+    className,
+    controls = true,
+    autoPlay = false
+  },
+  ref
+) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  
+  const [seamlessVideoUrl, setSeamlessVideoUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   // Expose the video element ref to parent component
   useImperativeHandle(ref, () => videoRef.current!, []);
-  const [parts, setParts] = useState<VideoPart[]>([]);
-  const [currentPartIndex, setCurrentPartIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  const chunkingService = useRef(new VideoChunkingService());
 
-  // Load video parts if chunked
+  // Notify parent when video element changes (for callback refs)
   useEffect(() => {
-    if (!video.isChunked) {
-      setIsLoading(false);
-      return;
+    if (ref && typeof ref === 'function' && videoRef.current) {
+      ref(videoRef.current);
     }
+  }, [ref, videoRef.current]);
 
-    const loadParts = async () => {
+  // SMART SOLUTION: Get seamless playback URL for chunked videos
+  useEffect(() => {
+    const getSeamlessPlaybackUrl = async () => {
+      if (!video.isChunked) {
+        // For non-chunked videos, use original path directly
+        setSeamlessVideoUrl(getOptimizedVideoUrl(video.originalPath));
+        return;
+      }
+
+      setIsLoading(true);
       try {
-        setIsLoading(true);
-        const videoParts = await chunkingService.current.getVideoParts(video.id);
-        setParts(videoParts);
-        setError(null);
+        console.log('🎯 Getting seamless playback URL for chunked video:', video.id);
+        
+        const response = await apiRequest("GET", `/api/videos/${video.id}/playback`);
+        if (!response.ok) {
+          throw new Error(`Failed to get playback URL: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('✅ Got seamless playback response:', data);
+        
+        if (data.playbackUrl) {
+          // Convert relative URL to full URL if needed
+          const playbackUrl = data.playbackUrl.startsWith('/') 
+            ? `${window.location.origin}${data.playbackUrl}`
+            : data.playbackUrl;
+          
+          setSeamlessVideoUrl(playbackUrl);
+          console.log('🎬 Using seamless video URL:', playbackUrl);
+        } else {
+          throw new Error('No playback URL provided');
+        }
       } catch (err) {
-        console.error("Failed to load video parts:", err);
-        setError("Failed to load video parts");
+        console.error('❌ Failed to get seamless playback URL:', err);
+        setError('Failed to load seamless video');
+        
+        // Fallback to original path with optimization
+        setSeamlessVideoUrl(getOptimizedVideoUrl(video.originalPath));
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadParts();
-  }, [video.id, video.isChunked]);
+    getSeamlessPlaybackUrl();
+  }, [video.id, video.isChunked, video.originalPath]);
 
-  // Update video source when current part changes
-  useEffect(() => {
-    if (!videoRef.current || !video.isChunked || parts.length === 0) return;
-
-    const currentPart = parts[currentPartIndex];
-    if (!currentPart) return;
-
-    const newSrc = chunkingService.current.getPartUrl(currentPart);
-    if (videoRef.current.src !== newSrc) {
-      const wasPlaying = !videoRef.current.paused;
-      const currentVideoTime = videoRef.current.currentTime;
-      
-      videoRef.current.src = newSrc;
-      
-      if (wasPlaying) {
-        videoRef.current.play().catch(console.error);
-      }
-      
-      // Preload next part for smooth playback
-      chunkingService.current.preloadNextPart(parts, currentPartIndex);
+  // Get optimized Cloudinary URL
+  const getOptimizedVideoUrl = (originalPath: string | null): string | null => {
+    if (!originalPath) return null;
+    
+    if (originalPath.startsWith('/objects/')) {
+      const publicId = originalPath.replace('/objects/', '');
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dapernzun';
+      return `https://res.cloudinary.com/${cloudName}/video/upload/f_auto,q_auto/${publicId}`;
     }
-  }, [currentPartIndex, parts, video.isChunked]);
+    
+    return originalPath;
+  };
 
-  // Handle time updates from external source (timeline, etc.)
-  useEffect(() => {
-    if (!videoRef.current || !video.isChunked || parts.length === 0) {
-      // For non-chunked videos, just set the time directly
-      if (videoRef.current && Math.abs(videoRef.current.currentTime - currentTime) > 0.5) {
-        videoRef.current.currentTime = currentTime;
-      }
-      return;
-    }
-
-    const partInfo = chunkingService.current.convertTimeToPartOffset(parts, currentTime);
-    if (!partInfo) return;
-
-    // Switch to the correct part if needed
-    if (partInfo.partIndex !== currentPartIndex) {
-      setCurrentPartIndex(partInfo.partIndex);
-    }
-
-    // Set the time within the current part
-    if (videoRef.current && Math.abs(videoRef.current.currentTime - partInfo.offsetTime) > 0.5) {
-      videoRef.current.currentTime = partInfo.offsetTime;
-    }
-  }, [currentTime, parts, currentPartIndex, video.isChunked]);
-
-  // Handle video time updates
+  // Handle time updates
   const handleTimeUpdate = useCallback(() => {
-    if (!videoRef.current || !onTimeUpdate) return;
-
-    if (!video.isChunked || parts.length === 0) {
-      // Non-chunked video - report time directly
+    if (videoRef.current && onTimeUpdate) {
       onTimeUpdate(videoRef.current.currentTime);
-      return;
     }
-
-    // Chunked video - convert part time to original video time
-    const originalTime = chunkingService.current.convertPartOffsetToTime(
-      parts,
-      currentPartIndex,
-      videoRef.current.currentTime
-    );
-    onTimeUpdate(originalTime);
-
-    // Check if we need to switch to the next part
-    const currentPart = parts[currentPartIndex];
-    if (currentPart && videoRef.current.currentTime >= currentPart.duration - 0.1) {
-      // Near the end of current part, switch to next part
-      const nextPartIndex = currentPartIndex + 1;
-      if (nextPartIndex < parts.length) {
-        setCurrentPartIndex(nextPartIndex);
-      }
-    }
-  }, [video.isChunked, parts, currentPartIndex, onTimeUpdate]);
+  }, [onTimeUpdate]);
 
   // Handle metadata loaded
   const handleLoadedMetadata = useCallback(() => {
+    if (videoRef.current) {
+      console.log('✅ Seamless video loaded:', {
+        duration: videoRef.current.duration,
+        dimensions: `${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`,
+        isChunked: video.isChunked
+      });
+    }
     onLoadedMetadata?.();
-  }, [onLoadedMetadata]);
+  }, [onLoadedMetadata, video.isChunked]);
+
+  // Handle external time changes (from timeline, etc.)
+  useEffect(() => {
+    if (!videoRef.current || typeof currentTime !== 'number') return;
+    
+    const delta = Math.abs(videoRef.current.currentTime - currentTime);
+    if (delta > 0.5) {
+      videoRef.current.currentTime = currentTime;
+    }
+  }, [currentTime]);
 
   if (isLoading) {
     return (
       <div className={`bg-black flex items-center justify-center ${className}`}>
-        <div className="text-white">Loading video...</div>
+        <div className="text-white">Loading seamless video...</div>
       </div>
     );
   }
@@ -153,48 +143,42 @@ export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlaye
     );
   }
 
-  // For non-chunked videos, use regular video element
-  if (!video.isChunked) {
-    // Use the streaming endpoint for authenticated video access
-    const videoSrc = video.originalPath?.startsWith('/objects/') 
-      ? `/api/videos/${video.id}/stream`
-      : video.originalPath;
-
+  if (!seamlessVideoUrl) {
     return (
-      <video
-        ref={videoRef}
-        src={videoSrc}
-        className={className}
-        controls={controls}
-        autoPlay={autoPlay}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        preload="metadata"
-        crossOrigin="use-credentials"
-      />
+      <div className={`bg-black flex items-center justify-center ${className}`}>
+        <div className="text-white">No video source available</div>
+      </div>
     );
   }
 
-  // For chunked videos, show current part with seamless switching
   return (
-    <div className="relative">
-      <video
-        ref={videoRef}
-        src={parts.length === 0 ? video.originalPath : undefined} // Fallback to original video if no parts
-        className={className}
-        controls={controls}
-        autoPlay={autoPlay}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        preload="metadata"
-      />
-      
-      {/* Chunked video indicator - only show if parts are loaded */}
-      {parts.length > 1 && (
-        <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-          Part {Math.max(1, currentPartIndex + 1)} of {parts.length}
-        </div>
-      )}
-    </div>
+    <video
+      ref={videoRef}
+      src={seamlessVideoUrl}
+      className={`${className} object-contain w-full h-full`}
+      controls={controls}
+      autoPlay={autoPlay}
+      onTimeUpdate={handleTimeUpdate}
+      onLoadedMetadata={handleLoadedMetadata}
+      preload="auto"
+      playsInline
+      crossOrigin="anonymous"
+      onError={(e) => {
+        console.error('❌ Seamless video error:', {
+          error: e.currentTarget.error?.message,
+          code: e.currentTarget.error?.code,
+          src: e.currentTarget.src
+        });
+        setError('Video playback failed');
+      }}
+      onLoadStart={() => {
+        console.log('🔄 Loading seamless video...');
+      }}
+      onCanPlay={() => {
+        console.log('📺 Seamless video ready to play');
+      }}
+    />
   );
 });
+
+ChunkedVideoPlayer.displayName = 'ChunkedVideoPlayer';

@@ -53,7 +53,7 @@ interface AudioFingerprint {
 export class TranscriptionError extends Error {
   constructor(
     message: string,
-    public code: 'FFMPEG_ERROR' | 'WHISPER_ERROR' | 'STORAGE_ERROR' | 'NETWORK_ERROR' | 'FILE_SIZE_ERROR',
+    public code: 'FFMPEG_ERROR' | 'WHISPER_ERROR' | 'STORAGE_ERROR' | 'NETWORK_ERROR' | 'FILE_SIZE_ERROR' | 'DATABASE_ERROR' | 'PARTIAL_SUCCESS',
     public originalError?: Error
   ) {
     super(message);
@@ -74,6 +74,7 @@ export class TranscriptionService {
   private readonly PROCESSING_BUFFER_MB = 5; // Safety buffer for processing
   private rateLimiter: RateLimiter; // Rate limiter for Whisper API
   private progressCallback?: (videoId: string, progress: TranscriptionProgress) => void;
+  private keepaliveInterval?: NodeJS.Timeout; // Database connection keepalive for long operations
   private static transcriptCache = new NodeCache({ 
     stdTTL: 86400, // 24 hours
     checkperiod: 3600, // Check for expired keys every hour
@@ -207,6 +208,40 @@ export class TranscriptionService {
   }
 
   /**
+   * Start database keepalive to prevent connection timeouts during long operations
+   */
+  private startKeepalive(): void {
+    this.stopKeepalive(); // Clear any existing keepalive
+    
+    console.log("🔄 Starting database keepalive for long-running transcription...");
+    
+    this.keepaliveInterval = setInterval(async () => {
+      try {
+        const { checkDatabaseConnection } = await import("../db");
+        const isHealthy = await checkDatabaseConnection();
+        if (isHealthy) {
+          console.log("💓 Database connection keepalive successful");
+        } else {
+          console.warn("⚠️ Database connection keepalive failed - connection may be unhealthy");
+        }
+      } catch (error) {
+        console.error("❌ Database keepalive check failed:", error);
+      }
+    }, 30000); // Check every 30 seconds
+  }
+
+  /**
+   * Stop database keepalive
+   */
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = undefined;
+      console.log("🛑 Stopped database keepalive");
+    }
+  }
+
+  /**
    * Emit progress update
    */
   private emitProgress(videoId: string, progress: TranscriptionProgress): void {
@@ -217,6 +252,10 @@ export class TranscriptionService {
 
   async transcribeVideo(videoId: string, userId: string): Promise<void> {
     const startTime = Date.now();
+    
+    // Start database keepalive for long-running operation
+    this.startKeepalive();
+    
     try {
       // Update status to processing
       await storage.updateVideoTranscriptionStatus(videoId, "processing");
@@ -272,11 +311,37 @@ export class TranscriptionService {
         message: 'Saving transcript to database...'
       });
       
-      await this.saveTranscriptWithTransaction(videoId, allSegments, overallConfidence);
+      try {
+        await this.saveTranscriptWithTransaction(videoId, allSegments, overallConfidence);
+      } catch (dbError) {
+        console.error("💥 Transaction failed, attempting fallback status update...", dbError);
+        
+        // Fallback: At least try to update the transcription status separately
+        try {
+          await storage.updateVideoTranscriptionStatus(videoId, "completed");
+          console.log("✅ Fallback status update successful");
+          
+          // Also emit progress to notify frontend
+          this.emitProgress(videoId, {
+            stage: 'transcription_complete',
+            progress: 100,
+            message: `Transcription completed with ${allSegments.length} segments (status updated, transcript save failed)`
+          });
+          
+          throw new TranscriptionError(
+            `Transcription completed but transcript storage failed. Video marked as completed.`,
+            'PARTIAL_SUCCESS',
+            dbError instanceof Error ? dbError : undefined
+          );
+        } catch (statusError) {
+          console.error("💥 Fallback status update also failed:", statusError);
+          throw dbError; // Re-throw original error
+        }
+      }
       
       const elapsedTime = (Date.now() - startTime) / 1000;
       this.emitProgress(videoId, {
-        stage: 'finalizing',
+        stage: 'transcription_complete',
         progress: 100,
         message: `Transcription completed in ${elapsedTime.toFixed(1)}s with ${allSegments.length} segments`
       });
@@ -306,6 +371,9 @@ export class TranscriptionService {
       } else {
         throw new TranscriptionError('Unknown transcription error occurred', 'WHISPER_ERROR');
       }
+    } finally {
+      // Always stop the keepalive when transcription completes (success or failure)
+      this.stopKeepalive();
     }
   }
 
@@ -1503,21 +1571,56 @@ export class TranscriptionService {
   }
 
   private async saveTranscriptWithTransaction(videoId: string, allSegments: any[], overallConfidence: number): Promise<void> {
-    const { db } = await import("../db");
+    const maxRetries = 3;
+    let lastError: Error | null = null;
     
-    await db.transaction(async (tx) => {
-      // Create transcript
-      await tx.insert(transcripts).values({
-        videoId,
-        segments: allSegments,
-        confidence: overallConfidence,
-        language: allSegments.length > 0 ? allSegments[0].language : 'en',
-      });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`💾 Attempting to save transcript (attempt ${attempt}/${maxRetries})...`);
+        
+        // Fresh database connection for each attempt
+        const { db } = await import("../db");
+        
+        await db.transaction(async (tx) => {
+          // Create transcript
+          await tx.insert(transcripts).values({
+            videoId,
+            segments: allSegments,
+            confidence: overallConfidence,
+            language: allSegments.length > 0 ? allSegments[0].language : 'en',
+          });
 
-      // Update video transcription status
-      await tx.update(videos)
-        .set({ transcriptionStatus: "completed" })
-        .where(eq(videos.id, videoId));
-    });
+          // Update video transcription status
+          await tx.update(videos)
+            .set({ 
+              transcriptionStatus: "completed",
+              updatedAt: new Date()
+            })
+            .where(eq(videos.id, videoId));
+        });
+        
+        console.log(`✅ Transcript saved successfully on attempt ${attempt}`);
+        return; // Success - exit the retry loop
+        
+      } catch (error: any) {
+        lastError = error;
+        console.error(`❌ Database save attempt ${attempt} failed:`, error.message);
+        
+        // If this isn't the last attempt, wait before retrying
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff, max 5s
+          console.log(`⏳ Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    // If we get here, all attempts failed
+    console.error(`💥 Failed to save transcript after ${maxRetries} attempts. Last error:`, lastError);
+    throw new TranscriptionError(
+      `Failed to save transcript to database after ${maxRetries} attempts: ${lastError?.message}`,
+      'DATABASE_ERROR',
+      lastError || undefined
+    );
   }
 }

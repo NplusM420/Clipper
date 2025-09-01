@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,9 @@ import {
   AlertCircle,
   Trash2,
   RefreshCw,
+  SkipBack,
+  SkipForward,
+  Plus,
 } from "lucide-react";
 import type { Video as VideoType, Clip, Transcript, TranscriptSegment } from "@shared/schema";
 
@@ -39,6 +42,9 @@ export default function Dashboard() {
 
   // State management
   const [selectedVideo, setSelectedVideo] = useState<VideoType | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const videoRef = useRef<HTMLVideoElement>(null);
   
   // Monitor transcription progress for the selected video
   const { progress: transcriptionProgress } = useTranscriptionProgress(selectedVideo?.id);
@@ -95,16 +101,46 @@ export default function Dashboard() {
     }
   }, [videos, selectedVideo]);
 
+  // Sync video play/pause state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => setIsPlaying(false);
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('ended', handleEnded);
+
+    return () => {
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('ended', handleEnded);
+    };
+  }, [selectedVideo]);
+
+
   // Handle transcription completion via WebSocket
   useEffect(() => {
+    console.log('🔍 Transcription progress check:', {
+      phase: transcriptionProgress?.phase,
+      stage: transcriptionProgress?.stage,
+      progress: transcriptionProgress?.progress,
+      videoId: transcriptionProgress?.uploadId,
+      selectedVideoId: selectedVideo?.id
+    });
+    
     if (transcriptionProgress?.phase === 'complete' && selectedVideo?.id) {
       console.log('🎉 Transcription completed via WebSocket, refreshing data...');
       
       // Invalidate and refetch video data to update transcriptionStatus
       queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
       
-      // Invalidate and refetch transcript data
+      // Invalidate and refetch transcript data - force immediate fetch
       queryClient.invalidateQueries({ queryKey: ["/api/videos", selectedVideo.id, "transcript"] });
+      queryClient.refetchQueries({ queryKey: ["/api/videos", selectedVideo.id, "transcript"] });
       
       // Show success toast
       toast({
@@ -119,11 +155,23 @@ export default function Dashboard() {
     queryKey: ["/api/videos", selectedVideo?.id, "transcript"],
     enabled: !!selectedVideo?.id,
     refetchInterval: (data) => {
-      // Poll every 3 seconds if no transcript exists or video is still transcribing
-      if (!data || selectedVideo?.transcriptionStatus === "processing") {
+      // Always poll if no transcript exists yet
+      if (!data) {
+        console.log(`🔄 Polling for transcript: no data yet`);
         return 3000;
       }
+      
+      // Find the current video status from the latest videos data
+      const currentVideo = videos.find(v => v.id === selectedVideo?.id);
+      const isStillProcessing = currentVideo?.transcriptionStatus === "processing";
+      
+      if (isStillProcessing) {
+        console.log(`🔄 Polling for transcript: still processing`);
+        return 3000;
+      }
+      
       // Stop polling if transcript exists and transcription is complete
+      console.log(`⏹️ Stopping transcript polling: transcription complete`);
       return false;
     },
   });
@@ -392,8 +440,12 @@ export default function Dashboard() {
 
   const handleDownloadClip = (clipId: string) => {
     const clip = clips.find(c => c.id === clipId);
-    if (clip?.outputPath) {
-      window.open(clip.outputPath, '_blank');
+    if (clip && clip.status === 'ready') {
+      // Use the proper download endpoint
+      console.log(`📥 Downloading clip: ${clip.name} (${clipId})`);
+      window.open(`/api/clips/${clipId}/download`, '_blank');
+    } else {
+      console.warn(`⚠️ Clip not ready for download: ${clip?.status}`);
     }
   };
 
@@ -451,6 +503,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground" data-testid="dashboard">
+
       {/* Navigation Header */}
       <header className="bg-card border-b border-border px-6 py-4">
         <div className="flex items-center justify-between">
@@ -544,7 +597,7 @@ export default function Dashboard() {
             <div className="flex-1 overflow-hidden">
               <div className="p-6 h-full">
                 <h3 className="font-semibold mb-4">Clip Management</h3>
-                <div className="h-[calc(100%-2rem)] overflow-hidden">
+                <div className="h-[calc(100%-2rem)] overflow-auto">
                   <ClipManager
                     clips={clips}
                     onCreateClip={handleCreateClip}
@@ -578,7 +631,7 @@ export default function Dashboard() {
           <div className="flex-1 flex flex-col">
             {selectedVideo ? (
               <>
-                {/* Video Player Panel - Proper sizing */}
+                {/* Video Player Panel - Full height video display */}
                 <div className="h-[60vh] flex flex-col p-6 pb-3">
                   <VideoPlayer
                     video={selectedVideo}
@@ -592,23 +645,239 @@ export default function Dashboard() {
                     }))}
                     onMarkStart={handleMarkStart}
                     onMarkEnd={handleMarkEnd}
+                    ref={videoRef}
                   />
                 </div>
 
-                {/* Transcript Panel - Fixed height, no overflow */}
-                <div className="h-[25vh] border-t border-border p-6 pt-4">
-                  <div className="mb-3">
-                    <h3 className="text-lg font-semibold">Transcript</h3>
-                    <p className="text-sm text-muted-foreground">Click on any segment to jump to that time</p>
+                {/* Video Controls Panel - Moved from sidebar */}
+                <div className="border-t border-border p-6 pt-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-lg">Video Controls</h4>
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {formatTime(currentTime)} / {formatTime(selectedVideo.duration)}
+                    </div>
                   </div>
-                  <div className="h-32 overflow-hidden">
-                    <TranscriptPanel
-                      segments={(transcript?.segments as TranscriptSegment[]) || []}
-                      currentTime={currentTime}
-                      onSegmentClick={handleSegmentClick}
-                      onTranscriptUpdate={handleTranscriptUpdate}
-                      isEditable={true}
-                    />
+
+                  <div className="space-y-6">
+                    {/* Timeline Slider */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Timeline</span>
+                        <span>{Math.round((currentTime / selectedVideo.duration) * 100)}%</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="0"
+                          max={selectedVideo.duration}
+                          step="0.1"
+                          value={currentTime}
+                          onChange={(e) => {
+                            const newTime = parseFloat(e.target.value);
+                            setCurrentTime(newTime);
+                            handleSeek(newTime);
+                          }}
+                          className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer slider"
+                        />
+                        {/* Clip markers on timeline */}
+                        {clipStartTime !== undefined && (
+                          <div
+                            className="absolute top-0 w-1 h-2 bg-green-500 pointer-events-none rounded"
+                            style={{ left: `${(clipStartTime / selectedVideo.duration) * 100}%` }}
+                          />
+                        )}
+                        {clipEndTime !== undefined && (
+                          <div
+                            className="absolute top-0 w-1 h-2 bg-red-500 pointer-events-none rounded"
+                            style={{ left: `${(clipEndTime / selectedVideo.duration) * 100}%` }}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Playback Controls */}
+                    <div className="flex items-center justify-center space-x-6">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newTime = Math.max(0, currentTime - 10);
+                          setCurrentTime(newTime);
+                          handleSeek(newTime);
+                        }}
+                        className="flex items-center space-x-1"
+                      >
+                        <SkipBack className="h-4 w-4" />
+                        <span className="text-sm">10s</span>
+                      </Button>
+                      
+                      <Button
+                        size="lg"
+                        onClick={() => {
+                          if (!videoRef.current) {
+                            console.error('No video element found!');
+                            return;
+                          }
+                          
+                          if (isPlaying) {
+                            videoRef.current.pause();
+                            setIsPlaying(false);
+                          } else {
+                            videoRef.current.play().catch((error) => {
+                              console.error('Video play failed:', error);
+                            });
+                            setIsPlaying(true);
+                          }
+                        }}
+                        className="bg-primary hover:bg-primary/90 px-6"
+                      >
+                        {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                      </Button>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newTime = Math.min(selectedVideo.duration, currentTime + 10);
+                          setCurrentTime(newTime);
+                          handleSeek(newTime);
+                        }}
+                        className="flex items-center space-x-1"
+                      >
+                        <SkipForward className="h-4 w-4" />
+                        <span className="text-sm">10s</span>
+                      </Button>
+                    </div>
+
+                    {/* Clip Management and Speed Controls */}
+                    <div className="grid grid-cols-2 gap-6">
+                      {/* Clip Markers */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Clip Markers</span>
+                          {(clipStartTime !== undefined || clipEndTime !== undefined) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setClipStartTime(undefined);
+                                setClipEndTime(undefined);
+                              }}
+                              className="text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleMarkStart}
+                            className={`flex items-center justify-center space-x-1 ${
+                              clipStartTime !== undefined ? 'border-green-500 text-green-600' : ''
+                            }`}
+                          >
+                            <div className="w-2 h-2 bg-green-500 rounded-full" />
+                            <span className="text-xs">Start</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleMarkEnd}
+                            className={`flex items-center justify-center space-x-1 ${
+                              clipEndTime !== undefined ? 'border-red-500 text-red-600' : ''
+                            }`}
+                          >
+                            <div className="w-2 h-2 bg-red-500 rounded-full" />
+                            <span className="text-xs">End</span>
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Speed Control */}
+                      <div className="space-y-3">
+                        <span className="text-sm font-medium">Playback Speed</span>
+                        <div className="grid grid-cols-5 gap-1">
+                          {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
+                            <Button
+                              key={speed}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (!videoRef.current) {
+                                  console.error('No video element for speed control!');
+                                  return;
+                                }
+                                videoRef.current.playbackRate = speed;
+                                setPlaybackSpeed(speed);
+                              }}
+                              className={`text-xs px-2 py-1 h-8 ${
+                                playbackSpeed === speed ? 'bg-primary text-primary-foreground' : ''
+                              }`}
+                            >
+                              {speed}x
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Selected Clip Info */}
+                    {(clipStartTime !== undefined || clipEndTime !== undefined) && (
+                      <div className="bg-muted rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-medium">Selected Clip</div>
+                          {clipStartTime !== undefined && clipEndTime !== undefined && (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                // Auto-generate clip name with timestamp
+                                const clipName = `Clip ${formatTime(clipStartTime)}-${formatTime(clipEndTime)}`;
+                                handleCreateClip({
+                                  name: clipName,
+                                  startTime: clipStartTime,
+                                  endTime: clipEndTime,
+                                  quality: "1080p"
+                                });
+                              }}
+                              className="flex items-center space-x-1"
+                            >
+                              <Plus className="h-3 w-3" />
+                              <span className="text-xs">Save Clip</span>
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 text-sm text-muted-foreground">
+                          {clipStartTime !== undefined && (
+                            <div>
+                              <div className="text-xs text-muted-foreground">Start</div>
+                              <div className="font-mono">{formatTime(clipStartTime)}</div>
+                            </div>
+                          )}
+                          {clipEndTime !== undefined && (
+                            <div>
+                              <div className="text-xs text-muted-foreground">End</div>
+                              <div className="font-mono">{formatTime(clipEndTime)}</div>
+                            </div>
+                          )}
+                          {clipStartTime !== undefined && clipEndTime !== undefined && (
+                            <div>
+                              <div className="text-xs text-muted-foreground">Duration</div>
+                              <div className="font-mono font-medium text-foreground">{formatTime(clipEndTime - clipStartTime)}</div>
+                            </div>
+                          )}
+                        </div>
+                        {clipStartTime !== undefined && clipEndTime !== undefined && (
+                          <div className="mt-3 pt-3 border-t border-border">
+                            <p className="text-xs text-muted-foreground">
+                              💡 Tip: Click "Save Clip" above or use the Clip Manager in the left sidebar for more options
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -639,7 +908,7 @@ export default function Dashboard() {
           </div>
 
           {/* Right Sidebar for Videos and Tools */}
-          <div className="w-80 border-l border-border bg-card flex flex-col">
+          <div className="w-80 border-l border-border bg-card flex flex-col min-h-0">
             {/* Videos List */}
             <div className="p-6 border-b border-border">
               <div className="flex items-center justify-between mb-6">
@@ -736,71 +1005,103 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Video Tools */}
-            {selectedVideo && (
-              <div className="flex-1 p-6">
-                <h3 className="text-lg font-semibold mb-4">Video Tools</h3>
-                
-                {/* Manual Transcription Section */}
-                <div className="space-y-4 mb-6">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Transcription</h4>
-                    <div className="flex items-center space-x-1 text-sm">
-                      {selectedVideo.transcriptionStatus === "completed" && (
-                        <>
-                          <CheckCircle className="h-4 w-4 text-green-400" />
-                          <span className="text-green-400">Complete</span>
-                        </>
-                      )}
-                      {selectedVideo.transcriptionStatus === "processing" && (
-                        <>
-                          <Clock className="h-4 w-4 text-accent animate-spin" />
-                          <span className="text-accent">Processing</span>
-                        </>
-                      )}
-                      {selectedVideo.transcriptionStatus === "error" && (
-                        <>
-                          <AlertCircle className="h-4 w-4 text-destructive" />
-                          <span className="text-destructive">Error</span>
-                        </>
-                      )}
-                      {!selectedVideo.transcriptionStatus && (
-                        <>
-                          <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">None</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <ManualTranscriptionButton 
-                    videoId={selectedVideo.id}
-                    transcriptionStatus={selectedVideo.transcriptionStatus}
-                  />
-                </div>
-
-                {/* Video Information */}
-                <div className="border-t border-border pt-6">
-                  <h4 className="font-medium mb-3">Video Information</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Duration:</span>
-                      <span>{formatTime(selectedVideo.duration)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
-                      <span>{getVideoStatusText(selectedVideo)}</span>
-                    </div>
-                    {selectedVideo.size && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Size:</span>
-                        <span>{(selectedVideo.size / 1024 / 1024).toFixed(1)} MB</span>
+            {/* Video Tools and Transcript */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+              {selectedVideo && (
+                <>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Video Tools</h3>
+                    
+                    {/* Manual Transcription Section */}
+                    <div className="space-y-4 mb-6">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">Transcription</h4>
+                        <div className="flex items-center space-x-1 text-sm">
+                          {selectedVideo.transcriptionStatus === "completed" && (
+                            <>
+                              <CheckCircle className="h-4 w-4 text-green-400" />
+                              <span className="text-green-400">Complete</span>
+                            </>
+                          )}
+                          {selectedVideo.transcriptionStatus === "processing" && (
+                            <>
+                              <Clock className="h-4 w-4 text-accent animate-spin" />
+                              <span className="text-accent">Processing</span>
+                            </>
+                          )}
+                          {selectedVideo.transcriptionStatus === "error" && (
+                            <>
+                              <AlertCircle className="h-4 w-4 text-destructive" />
+                              <span className="text-destructive">Error</span>
+                            </>
+                          )}
+                          {!selectedVideo.transcriptionStatus && (
+                            <>
+                              <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-muted-foreground">None</span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    )}
+                      
+                      <ManualTranscriptionButton 
+                        videoId={selectedVideo.id}
+                        transcriptionStatus={selectedVideo.transcriptionStatus}
+                      />
+                    </div>
+
+                    {/* Video Information */}
+                    <div className="border-t border-border pt-6">
+                      <h4 className="font-medium mb-3">Video Information</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Duration:</span>
+                          <span>{formatTime(selectedVideo.duration)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Status:</span>
+                          <span>{getVideoStatusText(selectedVideo)}</span>
+                        </div>
+                        {selectedVideo.size && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Size:</span>
+                            <span>{(selectedVideo.size / 1024 / 1024).toFixed(1)} MB</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
+
+                  {/* Transcript Panel */}
+                  <div className="border-t border-border pt-6">
+                    <div className="mb-3">
+                      <h4 className="font-medium text-lg">Transcript</h4>
+                      <p className="text-sm text-muted-foreground">Click on any segment to jump to that time</p>
+                    </div>
+                    
+                    <div className="h-96">
+                      <TranscriptPanel
+                        segments={(transcript?.segments as TranscriptSegment[]) || []}
+                        currentTime={Math.round(currentTime * 5) / 5}
+                        onSegmentClick={handleSegmentClick}
+                        onTranscriptUpdate={handleTranscriptUpdate}
+                        isEditable={true}
+                        onCreateClipFromSegment={(startTime, endTime, text) => {
+                          // Auto-generate clip name from transcript text
+                          const clipName = `"${text.substring(0, 50)}${text.length > 50 ? '...' : '"'}`;
+                          handleCreateClip({
+                            name: clipName,
+                            startTime,
+                            endTime,
+                            quality: "1080p"
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </main>
       </div>

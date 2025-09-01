@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Edit3, Save, X } from "lucide-react";
+import { Search, Edit3, Save, X, Scissors } from "lucide-react";
 import type { TranscriptSegment } from "@shared/schema";
 
 interface TranscriptPanelProps {
@@ -11,14 +11,16 @@ interface TranscriptPanelProps {
   onSegmentClick: (time: number) => void;
   onTranscriptUpdate: (segments: TranscriptSegment[]) => void;
   isEditable?: boolean;
+  onCreateClipFromSegment?: (startTime: number, endTime: number, text: string) => void;
 }
 
-export function TranscriptPanel({
+export const TranscriptPanel = React.memo(function TranscriptPanel({
   segments,
   currentTime,
   onSegmentClick,
   onTranscriptUpdate,
   isEditable = true,
+  onCreateClipFromSegment,
 }: TranscriptPanelProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isEditing, setIsEditing] = useState(false);
@@ -29,13 +31,18 @@ export function TranscriptPanel({
     setEditedSegments(segments);
   }, [segments]);
 
-  // Auto-scroll to current segment
+  // Auto-scroll to current segment (throttled)
+  const lastScrollRef = useRef<number>(0);
   useEffect(() => {
     const currentSegment = segments.find(
       (segment) => currentTime >= segment.start && currentTime <= segment.end
     );
 
     if (currentSegment && scrollAreaRef.current) {
+      const now = performance.now();
+      if (now - lastScrollRef.current < 300) return;
+      lastScrollRef.current = now;
+
       const segmentElement = scrollAreaRef.current.querySelector(
         `[data-segment-id="${currentSegment.id}"]`
       );
@@ -204,6 +211,21 @@ export function TranscriptPanel({
                       </div>
                     )}
                   </div>
+
+                  {/* Clip creation button - shown on hover */}
+                  {!isEditing && onCreateClipFromSegment && (
+                    <button
+                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded hover:bg-muted text-muted-foreground hover:text-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateClipFromSegment(segment.start, segment.end, segment.text);
+                      }}
+                      title="Create clip from this segment"
+                      data-testid={`button-clip-segment-${segment.id}`}
+                    >
+                      <Scissors className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -243,4 +265,4 @@ export function TranscriptPanel({
       )}
     </div>
   );
-}
+});

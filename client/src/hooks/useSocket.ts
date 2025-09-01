@@ -48,7 +48,8 @@ export function useSocket(): UseSocketReturn {
       console.log('🎤 Transcription progress update:', progress);
       // Convert transcription progress to ProgressEvent format for consistency
       const progressEvent: ProgressEvent = {
-        phase: progress.stage === 'transcription_complete' ? 'complete' : 'processing',
+        phase: (progress.stage === 'transcription_complete' || 
+                (progress.stage === 'finalizing' && progress.progress >= 100)) ? 'complete' : 'processing',
         progress: progress.progress,
         message: progress.message || `${progress.stage}...`,
         uploadId: progress.videoId,
@@ -105,7 +106,13 @@ export function useTranscriptionProgress(videoId?: string): {
   useEffect(() => {
     if (latestProgress && (!videoId || latestProgress.uploadId === videoId)) {
       // Only update for transcription-related progress
-      if (latestProgress.stage && latestProgress.stage.includes('transcription')) {
+      if (latestProgress.stage && (
+        latestProgress.stage.includes('transcription') || 
+        latestProgress.stage === 'finalizing' ||
+        latestProgress.stage === 'language_detection' ||
+        latestProgress.stage === 'whisper_transcription' ||
+        latestProgress.stage === 'cache_hit'
+      )) {
         setCurrentProgress(latestProgress);
       }
     }

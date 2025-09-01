@@ -34,7 +34,10 @@
       "Bash(cd:*)",
       "Bash(timeout 5s npm run dev)",
       "Bash(cd:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)"
     ],
     "additionalDirectories": [
       "/mnt/d/Clients"

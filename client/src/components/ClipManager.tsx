@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Scissors, Download, Edit3, Trash2, Play, Plus } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Scissors, Download, Play, Plus, Trash2, Clock, Timer, FileVideo } from "lucide-react";
 import type { Clip } from "@shared/schema";
 
 interface ClipManagerProps {
@@ -95,13 +96,13 @@ export function ClipManager({
   const getStatusColor = (status: string) => {
     switch (status) {
       case "ready":
-        return "bg-green-500";
+        return "bg-emerald-500 hover:bg-emerald-600";
       case "processing":
-        return "bg-accent";
+        return "bg-blue-500 hover:bg-blue-600";
       case "error":
-        return "bg-destructive";
+        return "bg-red-500 hover:bg-red-600";
       default:
-        return "bg-muted-foreground";
+        return "bg-gray-500 hover:bg-gray-600";
     }
   };
 
@@ -119,237 +120,275 @@ export function ClipManager({
   };
 
   return (
-    <div className="space-y-6" data-testid="clip-manager">
-      {/* Clip Creation Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Scissors className="h-5 w-5" />
-            <span>Create New Clip</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="startTime">Start Time</Label>
-              <div className="flex space-x-2">
-                <Input
-                  id="startTime"
-                  placeholder="00:12:34.250"
-                  value={startTime !== undefined ? formatTime(startTime) : ""}
-                  onChange={(e) => {
-                    const time = parseTimeString(e.target.value);
-                    onSetStartTime(time);
-                  }}
-                  className="font-mono"
-                  data-testid="input-start-time"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSetStartTime(currentTime)}
-                  data-testid="button-set-start-current"
-                >
-                  Current
-                </Button>
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="endTime">End Time</Label>
-              <div className="flex space-x-2">
-                <Input
-                  id="endTime"
-                  placeholder="00:15:22.180"
-                  value={endTime !== undefined ? formatTime(endTime) : ""}
-                  onChange={(e) => {
-                    const time = parseTimeString(e.target.value);
-                    onSetEndTime(time);
-                  }}
-                  className="font-mono"
-                  data-testid="input-end-time"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSetEndTime(currentTime)}
-                  data-testid="button-set-end-current"
-                >
-                  Current
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="clipName">Clip Name</Label>
-            <Input
-              id="clipName"
-              placeholder="Enter clip name"
-              value={clipName}
-              onChange={(e) => setClipName(e.target.value)}
-              data-testid="input-clip-name"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="quality">Quality</Label>
-            <select
-              id="quality"
-              value={quality}
-              onChange={(e) => setQuality(e.target.value)}
-              className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              data-testid="select-quality"
-            >
-              <option value="1080p">1080p (High)</option>
-              <option value="720p">720p (Medium)</option>
-              <option value="480p">480p (Low)</option>
-            </select>
-          </div>
-
-          <div className="space-y-3">
-            <div className="text-sm text-muted-foreground">
-              Duration:{" "}
-              <span className="font-mono" data-testid="text-duration">
-                {formatTime(calculateDuration())}
-              </span>
-            </div>
-            <div className="flex flex-col space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (startTime !== undefined && endTime !== undefined) {
-                    onPreviewClip({
-                      id: "preview",
-                      startTime,
-                      endTime,
-                      name: clipName || "Preview",
-                    } as Clip);
-                  }
-                }}
-                disabled={startTime === undefined || endTime === undefined}
-                data-testid="button-preview-clip"
-                className="w-full"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Preview Clip
-              </Button>
-              <Button
-                onClick={handleCreateClip}
-                disabled={
-                  !clipName.trim() ||
-                  startTime === undefined ||
-                  endTime === undefined ||
-                  startTime >= endTime
-                }
-                data-testid="button-create-clip"
-                size="sm"
-                className="w-full"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Clip
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Clips List */}
-      <div className="space-y-3">
-        <h3 className="font-semibold flex items-center justify-between">
-          Clips
-          <Badge variant="secondary" data-testid="clips-count">
-            {clips.length}
-          </Badge>
-        </h3>
-
-        {clips.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8 text-muted-foreground">
-                <Scissors className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No clips created yet</p>
-                <p className="text-sm">Create your first clip using the form above</p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          clips.map((clip) => (
-            <Card key={clip.id} className="hover:bg-muted/50 transition-colors">
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate" data-testid={`clip-name-${clip.id}`}>
-                      {clip.name}
-                    </h4>
-                    <p className="text-sm text-muted-foreground" data-testid={`clip-time-range-${clip.id}`}>
-                      {formatTime(clip.startTime)} - {formatTime(clip.endTime)}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge
-                      className={`${getStatusColor(clip.status)} text-white`}
-                      data-testid={`clip-status-${clip.id}`}
+    <div className="flex flex-col h-full" data-testid="clip-manager">
+      {/* CREATE CLIP SECTION */}
+      <div className="flex-shrink-0 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Scissors className="h-5 w-5 text-blue-600" />
+          <h3 className="font-semibold text-lg">Create New Clip</h3>
+        </div>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-4">
+              {/* TIME CONTROLS */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Start Time
+                  </Label>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="00:12:34.250"
+                      value={startTime !== undefined ? formatTime(startTime) : ""}
+                      onChange={(e) => {
+                        const time = parseTimeString(e.target.value);
+                        onSetStartTime(time);
+                      }}
+                      className="font-mono text-sm"
+                      data-testid="input-start-time"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onSetStartTime(currentTime)}
+                      className="w-full h-8 text-xs"
+                      data-testid="button-set-start-current"
                     >
-                      {getStatusText(clip.status)}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground" data-testid={`clip-duration-${clip.id}`}>
-                      {formatTime(clip.duration)}
-                    </span>
+                      Use Current Time
+                    </Button>
                   </div>
                 </div>
 
-                {clip.status === "processing" && (
-                  <div className="mb-3">
-                    <Progress
-                      value={clip.processingProgress || 0}
-                      className="h-2"
-                      data-testid={`clip-progress-${clip.id}`}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    <Timer className="h-3 w-3" />
+                    End Time
+                  </Label>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="00:15:22.180"
+                      value={endTime !== undefined ? formatTime(endTime) : ""}
+                      onChange={(e) => {
+                        const time = parseTimeString(e.target.value);
+                        onSetEndTime(time);
+                      }}
+                      className="font-mono text-sm"
+                      data-testid="input-end-time"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Processing... {clip.processingProgress || 0}%
-                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onSetEndTime(currentTime)}
+                      className="w-full h-8 text-xs"
+                      data-testid="button-set-end-current"
+                    >
+                      Use Current Time
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* CLIP DETAILS */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Clip Name</Label>
+                  <Input
+                    placeholder="Enter clip name"
+                    value={clipName}
+                    onChange={(e) => setClipName(e.target.value)}
+                    data-testid="input-clip-name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">Quality</Label>
+                    <select
+                      value={quality}
+                      onChange={(e) => setQuality(e.target.value)}
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      data-testid="select-quality"
+                    >
+                      <option value="1080p">1080p (High)</option>
+                      <option value="720p">720p (Medium)</option>
+                      <option value="480p">480p (Low)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">Duration</Label>
+                    <div className="bg-muted/50 border border-border rounded-md px-3 py-2">
+                      <span className="font-mono text-sm" data-testid="text-duration">
+                        {formatTime(calculateDuration())}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SIZE WARNING */}
+                {calculateDuration() > 600 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-amber-800 text-sm">
+                      <FileVideo className="h-4 w-4 flex-shrink-0" />
+                      <span>Long clips ({Math.round(calculateDuration() / 60)} min+) will be optimized for storage</span>
+                    </div>
                   </div>
                 )}
 
-                <div className="flex space-x-2">
+                {/* ACTION BUTTONS */}
+                <div className="flex gap-2 pt-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => onPreviewClip(clip)}
-                    data-testid={`button-preview-${clip.id}`}
+                    onClick={() => {
+                      if (startTime !== undefined && endTime !== undefined) {
+                        onPreviewClip({
+                          id: "preview",
+                          startTime,
+                          endTime,
+                          name: clipName || "Preview",
+                        } as Clip);
+                      }
+                    }}
+                    disabled={startTime === undefined || endTime === undefined}
+                    data-testid="button-preview-clip"
+                    className="flex-1"
                   >
-                    <Play className="h-4 w-4 mr-1" />
+                    <Play className="h-4 w-4 mr-2" />
                     Preview
                   </Button>
-
-                  {clip.status === "ready" && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => onDownloadClip(clip.id)}
-                      data-testid={`button-download-${clip.id}`}
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      Download
-                    </Button>
-                  )}
-
                   <Button
-                    variant="ghost"
+                    onClick={handleCreateClip}
+                    disabled={
+                      !clipName.trim() ||
+                      startTime === undefined ||
+                      endTime === undefined ||
+                      startTime >= endTime
+                    }
+                    data-testid="button-create-clip"
                     size="sm"
-                    onClick={() => onDeleteClip(clip.id)}
-                    className="text-destructive hover:text-destructive/80"
-                    data-testid={`button-delete-${clip.id}`}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Clip
                   </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* CLIPS LIST SECTION */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <FileVideo className="h-5 w-5 text-gray-600" />
+            <h3 className="font-semibold text-lg">Your Clips</h3>
+          </div>
+          <Badge variant="secondary" className="px-2 py-1" data-testid="clips-count">
+            {clips.length}
+          </Badge>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-3">
+          {clips.length === 0 ? (
+            <Card className="border-dashed border-2 border-gray-200">
+              <CardContent className="pt-8 pb-8">
+                <div className="text-center text-gray-500">
+                  <Scissors className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium mb-1">No clips created yet</p>
+                  <p className="text-sm">Create your first clip using the form above</p>
                 </div>
               </CardContent>
             </Card>
-          ))
-        )}
+          ) : (
+            clips.map((clip) => (
+              <Card key={clip.id} className="hover:shadow-sm transition-all duration-150 border border-gray-200">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    {/* CLIP HEADER */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium truncate text-gray-900" data-testid={`clip-name-${clip.id}`}>
+                          {clip.name}
+                        </h4>
+                        <p className="text-sm text-gray-500 font-mono" data-testid={`clip-time-range-${clip.id}`}>
+                          {formatTime(clip.startTime)} → {formatTime(clip.endTime)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Badge
+                          className={`${getStatusColor(clip.status)} text-white text-xs px-2 py-1`}
+                          data-testid={`clip-status-${clip.id}`}
+                        >
+                          {getStatusText(clip.status)}
+                        </Badge>
+                        <span className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded" data-testid={`clip-duration-${clip.id}`}>
+                          {formatTime(clip.duration)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* PROGRESS BAR */}
+                    {clip.status === "processing" && (
+                      <div className="space-y-1">
+                        <Progress
+                          value={clip.processingProgress || 0}
+                          className="h-2"
+                          data-testid={`clip-progress-${clip.id}`}
+                        />
+                        <p className="text-xs text-gray-500 text-center">
+                          Processing... {clip.processingProgress || 0}%
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ACTION BUTTONS */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onPreviewClip(clip)}
+                        className="flex-1 h-8 text-xs"
+                        data-testid={`button-preview-${clip.id}`}
+                      >
+                        <Play className="h-3 w-3 mr-1" />
+                        Preview
+                      </Button>
+
+                      {clip.status === "ready" && (
+                        <Button
+                          size="sm"
+                          onClick={() => onDownloadClip(clip.id)}
+                          className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
+                          data-testid={`button-download-${clip.id}`}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDeleteClip(clip.id)}
+                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        data-testid={`button-delete-${clip.id}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

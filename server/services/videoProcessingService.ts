@@ -5,9 +5,12 @@ import { storage } from "../storage";
 import { ObjectStorageService } from "../objectStorage";
 import { ObjectAclPolicy } from "../objectAcl";
 import fetch from "node-fetch";
+import https from "https";
+import http from "http";
 
 export class VideoProcessingService {
   private objectStorage: ObjectStorageService;
+  private static readonly MAX_CLIP_SIZE = 90 * 1024 * 1024; // 90MB for Cloudinary free tier safety
 
   constructor() {
     this.objectStorage = new ObjectStorageService();
@@ -40,8 +43,21 @@ export class VideoProcessingService {
       const tempOutputPath = path.join(tempDir, `output_${clipId}.mp4`);
 
       if (video.isChunked) {
-        // Handle chunked video: download and concatenate relevant parts
-        await this.prepareChunkedVideoForClip(video.id, clip.startTime, clip.endTime, tempInputPath);
+        // SMART APPROACH: Use seamless concatenated video for clipping
+        // This leverages our existing seamless video infrastructure
+        console.log(`🔗 Using seamless video approach for chunked video clip`);
+        
+        const seamlessVideoPath = path.join(process.cwd(), 'temp', `${video.id}_seamless.mp4`);
+        
+        if (fs.existsSync(seamlessVideoPath)) {
+          // Use existing concatenated video
+          console.log(`✅ Using existing seamless video for clipping`);
+          fs.copyFileSync(seamlessVideoPath, tempInputPath);
+        } else {
+          // Create seamless video first, then use it
+          console.log(`🔄 Creating seamless video for clipping...`);
+          await this.createSeamlessVideoForClipping(video.id, tempInputPath);
+        }
       } else {
         // Handle regular video: download directly
         const publicId = this.extractPublicIdFromPath(video.originalPath);
@@ -59,17 +75,36 @@ export class VideoProcessingService {
         fs.writeFileSync(tempInputPath, buffer);
       }
 
-      // Process clip with FFmpeg
-      await this.createClip(
-        tempInputPath,
-        tempOutputPath,
-        clip.startTime,
-        clip.endTime,
-        clip.quality || "1080p",
-        (progress) => {
-          storage.updateClipProgress(clipId, Math.round(progress));
-        }
-      );
+      // Estimate clip size before processing
+      const estimatedSize = await this.estimateClipSize(tempInputPath, clip.startTime, clip.endTime, clip.quality || "1080p");
+      console.log(`📏 Estimated clip size: ${(estimatedSize / 1024 / 1024).toFixed(2)}MB`);
+      
+      if (estimatedSize > VideoProcessingService.MAX_CLIP_SIZE) {
+        console.log(`⚠️ Clip too large (${(estimatedSize / 1024 / 1024).toFixed(2)}MB), using optimized encoding`);
+        
+        // Use more aggressive compression for large clips
+        await this.createOptimizedClip(
+          tempInputPath,
+          tempOutputPath,
+          clip.startTime,
+          clip.endTime,
+          (progress) => {
+            storage.updateClipProgress(clipId, Math.round(progress));
+          }
+        );
+      } else {
+        // Process clip with normal quality
+        await this.createClip(
+          tempInputPath,
+          tempOutputPath,
+          clip.startTime,
+          clip.endTime,
+          clip.quality || "1080p",
+          (progress) => {
+            storage.updateClipProgress(clipId, Math.round(progress));
+          }
+        );
+      }
 
       // Upload processed clip to Cloudinary
       const clipResult = await this.objectStorage.uploadClip(tempOutputPath, {
@@ -161,17 +196,6 @@ export class VideoProcessingService {
     });
   }
 
-  async getVideoMetadata(filePath: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(filePath, (err, metadata) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(metadata);
-        }
-      });
-    });
-  }
 
   /**
    * Prepares a chunked video for clip creation by downloading and concatenating relevant parts
@@ -297,6 +321,254 @@ export class VideoProcessingService {
         }
         reject(error);
       }
+    });
+  }
+
+  /**
+   * Creates seamless video for clipping by downloading and concatenating chunks
+   * This reuses the logic from our seamless video endpoint
+   */
+  private async createSeamlessVideoForClipping(videoId: string, outputPath: string): Promise<void> {
+    console.log(`🔗 Creating seamless video for clipping: ${videoId}`);
+    
+    // Get video parts
+    const parts = await storage.getVideoParts(videoId);
+    if (parts.length === 0) {
+      throw new Error('No video parts found for chunked video');
+    }
+
+    // Sort parts by partIndex to ensure correct order
+    const sortedParts = parts.sort((a, b) => a.partIndex - b.partIndex);
+    
+    const tempDir = path.join(process.cwd(), 'temp');
+    const chunkPaths: string[] = [];
+    
+    try {
+      // Download all chunks from Cloudinary
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'dapernzun';
+      
+      for (let i = 0; i < sortedParts.length; i++) {
+        const part = sortedParts[i];
+        const chunkUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${part.cloudinaryPublicId}`;
+        const chunkPath = path.join(tempDir, `${videoId}_clip_chunk_${part.partIndex}.mp4`);
+        
+        console.log(`📥 Downloading chunk ${i + 1}/${sortedParts.length} for clipping...`);
+        await this.downloadFile(chunkUrl, chunkPath);
+        chunkPaths.push(chunkPath);
+      }
+
+      // Create concat list file for FFmpeg
+      const concatListPath = path.join(tempDir, `${videoId}_clip_concat_list.txt`);
+      const concatList = chunkPaths.map(p => `file '${p}'`).join('\n');
+      fs.writeFileSync(concatListPath, concatList);
+
+      // Concatenate using FFmpeg
+      console.log('🔗 Concatenating chunks for clipping...');
+      await this.concatenateWithFFmpeg(concatListPath, outputPath);
+
+      // Clean up temporary files
+      chunkPaths.forEach(p => {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      });
+      if (fs.existsSync(concatListPath)) fs.unlinkSync(concatListPath);
+
+      console.log('✅ Seamless video created for clipping');
+
+    } catch (error) {
+      // Clean up on error
+      chunkPaths.forEach(p => {
+        if (fs.existsSync(p)) {
+          try { fs.unlinkSync(p); } catch {}
+        }
+      });
+      throw error;
+    }
+  }
+
+  private async downloadFile(url: string, outputPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const client = url.startsWith('https') ? https : http;
+      const file = fs.createWriteStream(outputPath);
+      
+      const request = client.get(url, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Download failed with status ${response.statusCode}`));
+          return;
+        }
+        
+        response.pipe(file);
+        
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+        
+        file.on('error', (err) => {
+          fs.unlink(outputPath, () => {}); // Clean up on error
+          reject(err);
+        });
+      });
+      
+      request.on('error', (err) => {
+        reject(err);
+      });
+    });
+  }
+
+  private async concatenateWithFFmpeg(concatListPath: string, outputPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('FFmpeg concatenation timeout'));
+      }, 10 * 60 * 1000); // 10 minute timeout
+
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .videoCodec('copy') // Copy without re-encoding for speed
+        .audioCodec('copy') // Copy without re-encoding for speed  
+        .format('mp4')
+        .outputOptions(['-movflags', '+faststart']) // Optimize for streaming
+        .on('start', (commandLine) => {
+          console.log(`🚀 FFmpeg concatenation started for clipping`);
+        })
+        .on('progress', (progress) => {
+          if (progress.percent && progress.percent % 25 === 0) {
+            console.log(`📊 Clip concatenation progress: ${Math.round(progress.percent)}%`);
+          }
+        })
+        .on('end', () => {
+          clearTimeout(timeout);
+          console.log(`✅ FFmpeg concatenation completed for clipping`);
+          resolve();
+        })
+        .on('error', (err, stdout, stderr) => {
+          clearTimeout(timeout);
+          console.error(`❌ FFmpeg concatenation error:`, err.message);
+          reject(err);
+        })
+        .save(outputPath);
+    });
+  }
+
+  /**
+   * Estimates the size of a clip before processing
+   */
+  private async estimateClipSize(inputPath: string, startTime: number, endTime: number, quality: string): Promise<number> {
+    try {
+      // Get input file size and duration
+      const inputStats = fs.statSync(inputPath);
+      const inputSize = inputStats.size;
+      
+      // Get video metadata
+      const metadata = await this.getVideoMetadata(inputPath);
+      const totalDuration = metadata.format.duration || 1;
+      const clipDuration = endTime - startTime;
+      
+      // Estimate based on duration ratio and quality
+      let sizeRatio = clipDuration / totalDuration;
+      
+      // Quality multipliers (rough estimates)
+      const qualityMultipliers = {
+        "1080p": 1.0,
+        "720p": 0.6,
+        "480p": 0.35
+      };
+      
+      const qualityMultiplier = qualityMultipliers[quality as keyof typeof qualityMultipliers] || 1.0;
+      
+      // Conservative estimate (FFmpeg compression usually reduces size)
+      const estimatedSize = Math.round(inputSize * sizeRatio * qualityMultiplier * 0.8);
+      
+      return estimatedSize;
+    } catch (error) {
+      console.warn("Failed to estimate clip size:", error);
+      // Return a conservative estimate if metadata fails
+      return VideoProcessingService.MAX_CLIP_SIZE + 1; // This will trigger optimized encoding
+    }
+  }
+
+  /**
+   * Creates an optimized clip with aggressive compression for large videos
+   */
+  private async createOptimizedClip(
+    inputPath: string,
+    outputPath: string,
+    startTime: number,
+    endTime: number,
+    onProgress?: (progress: number) => void
+  ): Promise<void> {
+    console.log(`🔧 Creating optimized clip: ${startTime}s - ${endTime}s`);
+    
+    const duration = endTime - startTime;
+    
+    return new Promise((resolve, reject) => {
+      let lastProgress = 0;
+      
+      ffmpeg(inputPath)
+        .seekInput(startTime)
+        .duration(duration)
+        .videoCodec('libx264')
+        .audioCodec('aac')
+        .format('mp4')
+        .outputOptions([
+          '-movflags', '+faststart',
+          '-preset', 'faster',
+          '-crf', '32', // Higher CRF = more compression
+          '-maxrate', '1000k', // Limit bitrate
+          '-bufsize', '2000k',
+          '-vf', 'scale=1280:720', // Force 720p max
+          '-r', '24', // Reduce frame rate
+          '-ac', '2', // Stereo audio
+          '-ar', '44100', // Standard audio rate
+          '-b:a', '96k' // Low audio bitrate
+        ])
+        .on('start', (commandLine) => {
+          console.log(`🚀 Optimized FFmpeg started: ${commandLine}`);
+        })
+        .on('progress', (progress) => {
+          const currentProgress = Math.min(progress.percent || 0, 100);
+          if (currentProgress - lastProgress >= 5) {
+            console.log(`📊 Optimized clip progress: ${Math.round(currentProgress)}%`);
+            onProgress?.(currentProgress);
+            lastProgress = currentProgress;
+          }
+        })
+        .on('end', () => {
+          console.log('✅ Optimized clip creation completed');
+          onProgress?.(100);
+          
+          // Check final size
+          const stats = fs.statSync(outputPath);
+          console.log(`📏 Final optimized clip size: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+          
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error('❌ Optimized clip creation failed:', err);
+          reject(err);
+        })
+        .save(outputPath);
+    });
+  }
+
+  /**
+   * Gets video metadata using ffprobe
+   */
+  private async getVideoMetadata(filePath: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('FFprobe timeout'));
+      }, 30000);
+      
+      ffmpeg.ffprobe(filePath, (err, metadata) => {
+        clearTimeout(timeout);
+        
+        if (err) {
+          reject(err);
+        } else {
+          resolve(metadata);
+        }
+      });
     });
   }
 }

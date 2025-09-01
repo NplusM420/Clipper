@@ -236,4 +236,45 @@
   .toast-warning {
     border-left: 4px solid var(--accent);
   }
+
+  /* Video timeline slider */
+  .slider {
+    -webkit-appearance: none;
+    background: var(--muted);
+    outline: none;
+  }
+
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: 2px solid var(--background);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .slider::-webkit-slider-thumb:hover {
+    background: hsl(217, 91%, 70%);
+    transform: scale(1.1);
+    transition: all 0.15s ease;
+  }
+
+  .slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: 2px solid var(--background);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .slider::-moz-range-track {
+    background: var(--muted);
+    height: 8px;
+    border-radius: 4px;
+  }
 }

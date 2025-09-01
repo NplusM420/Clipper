@@ -19,10 +19,10 @@ export const pool = new Pool({
     rejectUnauthorized: false // Allow self-signed certificates for Railway
   },
   max: 10, // Maximum number of clients in the pool
-  idleTimeoutMillis: 60000, // Close idle clients after 60 seconds
+  idleTimeoutMillis: 600000, // Close idle clients after 10 minutes (for long-running transcriptions)
   connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established
-  statement_timeout: 30000, // Cancel any statement that takes over 30 seconds
-  query_timeout: 30000, // Cancel any query that takes over 30 seconds
+  statement_timeout: 60000, // Cancel any statement that takes over 60 seconds (increased for large inserts)
+  query_timeout: 60000, // Cancel any query that takes over 60 seconds (increased for large inserts)
 });
 
 export const db = drizzle(pool, { schema });

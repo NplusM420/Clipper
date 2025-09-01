@@ -35,7 +35,21 @@ export class VideoChunkingService {
         throw new Error(`Failed to fetch video parts: ${response.statusText}`);
       }
       
-      const parts = await response.json();
+      const raw = await response.json();
+      // Normalize and sort parts; ensure contiguous index
+      const parts: VideoPart[] = (raw as any[])
+        .map((p, i) => ({
+          index: typeof p.index === 'number' ? p.index : (typeof p.partIndex === 'number' ? p.partIndex : i),
+          startTime: p.startTime,
+          endTime: p.endTime,
+          duration: p.duration,
+          cloudinaryPublicId: p.cloudinaryPublicId,
+          size: p.size,
+          secure_url: p.secure_url
+        }))
+        .sort((a, b) => a.startTime - b.startTime)
+        .map((p, i) => ({ ...p, index: i }));
+
       this.videoPartsCache.set(videoId, parts);
       return parts;
     } catch (error) {
@@ -47,13 +61,18 @@ export class VideoChunkingService {
   /**
    * Determines which video part should be playing at a given time
    */
-  getPartForTime(parts: VideoPart[], currentTime: number): { part: VideoPart; offsetTime: number } | null {
-    for (const part of parts) {
-      if (currentTime >= part.startTime && currentTime < part.endTime) {
-        return {
-          part,
-          offsetTime: currentTime - part.startTime
-        };
+  getPartForTime(parts: VideoPart[], currentTime: number): { partIndex: number; offsetTime: number } | null {
+    let left = 0;
+    let right = parts.length - 1;
+    while (left <= right) {
+      const mid = (left + right) >> 1;
+      const part = parts[mid];
+      if (currentTime < part.startTime) {
+        right = mid - 1;
+      } else if (currentTime >= part.endTime) {
+        left = mid + 1;
+      } else {
+        return { partIndex: mid, offsetTime: currentTime - part.startTime };
       }
     }
     return null;
@@ -65,29 +84,25 @@ export class VideoChunkingService {
   getPartUrl(part: VideoPart): string {
     // Generate Cloudinary URL from public ID
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dapernzun';
-    return `https://res.cloudinary.com/${cloudName}/video/upload/${part.cloudinaryPublicId}.mp4`;
+    // Use unsigned, cache-friendly delivery with no credentials; ensure extension is omitted
+    return `https://res.cloudinary.com/${cloudName}/video/upload/f_auto,q_auto/${part.cloudinaryPublicId}`;
   }
 
   /**
    * Converts a time in the original video to the appropriate part and offset
    */
   convertTimeToPartOffset(parts: VideoPart[], originalTime: number): { partIndex: number; offsetTime: number } | null {
-    const partInfo = this.getPartForTime(parts, originalTime);
-    if (!partInfo) return null;
-
-    return {
-      partIndex: partInfo.part.index,
-      offsetTime: partInfo.offsetTime
-    };
+    const info = this.getPartForTime(parts, originalTime);
+    if (!info) return null;
+    return info;
   }
 
   /**
    * Converts a part index and offset back to original video time
    */
   convertPartOffsetToTime(parts: VideoPart[], partIndex: number, offsetTime: number): number {
-    const part = parts.find(p => p.index === partIndex);
+    const part = parts[partIndex];
     if (!part) return 0;
-
     return part.startTime + offsetTime;
   }
 
@@ -95,13 +110,13 @@ export class VideoChunkingService {
    * Preloads the next video part for smooth playback
    */
   preloadNextPart(parts: VideoPart[], currentPartIndex: number): void {
-    const nextPart = parts.find(p => p.index === currentPartIndex + 1);
+    const nextPart = parts[currentPartIndex + 1];
     if (!nextPart) return;
 
     // Create a hidden video element to preload the next part
     const video = document.createElement('video');
     video.src = this.getPartUrl(nextPart);
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.style.display = 'none';
     document.body.appendChild(video);
 
