@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AuthPage from "@/pages/AuthPage";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
+import AIDashboard from "@/pages/AIDashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -33,6 +34,7 @@ function Router() {
       ) : (
         <>
           <Route path="/" component={Dashboard} />
+          <Route path="/ai-discovery" component={AIDashboard} />
         </>
       )}
       <Route component={NotFound} />

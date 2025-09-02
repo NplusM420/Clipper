@@ -3,7 +3,10 @@ import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import { config } from "dotenv";
 import { registerRoutes } from "./routes";
+import { chatRoutes } from "./chatRoutes";
 import { setupVite, serveStatic, log } from "./vite";
+import { initializeWebSocket } from "./services/websocketService";
+import { DatabaseInitService } from "./services/databaseInitService";
 
 // Load environment variables
 config();
@@ -69,6 +72,47 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize database and perform startup health checks
+  console.log('\n🚀 Starting Video Clipper Application...\n');
+  
+  try {
+    // Step 1: Initialize database schema
+    const dbStatus = await DatabaseInitService.initialize();
+    if (!dbStatus.connected) {
+      console.error('❌ Database connection failed. Server cannot start.');
+      if (dbStatus.errors.length > 0) {
+        console.error('Errors:', dbStatus.errors.join(', '));
+      }
+      process.exit(1);
+    }
+
+    // Show warnings for missing tables but allow server to start
+    if (!dbStatus.tablesExist) {
+      console.log('⚠️  Database schema incomplete - some features may not work correctly.');
+      if (dbStatus.errors.length > 0) {
+        console.log('Schema issues:', dbStatus.errors.join(', '));
+      }
+    }
+
+    // Step 2: Perform startup health check
+    const healthCheck = await DatabaseInitService.performStartupHealthCheck();
+    if (!healthCheck.database || !healthCheck.environment) {
+      console.error('❌ Critical startup health check failed. Server cannot start.');
+      process.exit(1);
+    }
+
+    if (healthCheck.warnings.length > 0) {
+      console.log('⚠️  Non-critical warnings detected - server will continue:');
+      healthCheck.warnings.forEach(warning => console.log(`  • ${warning}`));
+    }
+
+    console.log('✅ All startup checks passed. Initializing server...\n');
+    
+  } catch (error) {
+    console.error('❌ Startup initialization failed:', error);
+    process.exit(1);
+  }
+
   // Create HTTP server and Socket.IO
   const httpServer = createServer(app);
   const io = new SocketServer(httpServer, {
@@ -96,16 +140,13 @@ app.use((req, res, next) => {
     }
   });
 
-  // Setup Socket.IO connection handling
-  io.on('connection', (socket) => {
-    log(`Client connected: ${socket.id}`);
-    
-    socket.on('disconnect', () => {
-      log(`Client disconnected: ${socket.id}`);
-    });
-  });
+  // Initialize WebSocket service
+  const webSocketService = initializeWebSocket(io);
 
   const server = await registerRoutes(app, io);
+  
+  // Add chat routes
+  app.use('/api/chat', chatRoutes);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -130,6 +171,10 @@ app.use((req, res, next) => {
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
   httpServer.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port} with WebSocket support`);
+    console.log('\n🎉 Video Clipper Server Started Successfully!');
+    console.log(`📡 Server running on http://localhost:${port}`);
+    console.log('🔌 WebSocket support enabled');
+    console.log('💾 Database ready and validated');
+    console.log('\nReady to accept requests...\n');
   });
 })();

@@ -90,9 +90,9 @@ export const ChunkedVideoPlayer = forwardRef<HTMLVideoElement, ChunkedVideoPlaye
     if (!originalPath) return null;
     
     if (originalPath.startsWith('/objects/')) {
+      // Let the server proxy/generate the URL to avoid exposing cloud config
       const publicId = originalPath.replace('/objects/', '');
-      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dapernzun';
-      return `https://res.cloudinary.com/${cloudName}/video/upload/f_auto,q_auto/${publicId}`;
+      return `${window.location.origin}/objects/${publicId}`;
     }
     
     return originalPath;

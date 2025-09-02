@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Key, Eye, EyeOff, TestTube, CheckCircle, XCircle } from "lucide-react";
+import { Settings, Key, Eye, EyeOff, TestTube, CheckCircle, XCircle, Brain, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,14 +24,117 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [concurrentJobs, setConcurrentJobs] = useState("1");
   const [isSaving, setIsSaving] = useState(false);
   
+  // OpenRouter settings
+  const [openRouterApiKey, setOpenRouterApiKey] = useState("");
+  const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
+  const [isTestingOpenRouter, setIsTestingOpenRouter] = useState(false);
+  const [openRouterTestResult, setOpenRouterTestResult] = useState<"success" | "error" | null>(null);
+  const [isSavingOpenRouter, setIsSavingOpenRouter] = useState(false);
+  const [openRouterConfigured, setOpenRouterConfigured] = useState(false);
+  
+  // Cloudinary settings
+  const [cloudinaryCloudName, setCloudinaryCloudName] = useState("");
+  const [cloudinaryApiKey, setCloudinaryApiKey] = useState("");
+  const [cloudinaryApiSecret, setCloudinaryApiSecret] = useState("");
+  const [showCloudinarySecret, setShowCloudinarySecret] = useState(false);
+  const [isTestingCloudinary, setIsTestingCloudinary] = useState(false);
+  const [cloudinaryTestResult, setCloudinaryTestResult] = useState<"success" | "error" | null>(null);
+  const [isSavingCloudinary, setIsSavingCloudinary] = useState(false);
+  const [cloudinaryConfigured, setCloudinaryConfigured] = useState(false);
+  
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // AI Model configurations
+  const AI_MODELS = {
+    SMALL: {
+      id: 'google/gemma-3-27b-it',
+      name: 'Gemma 27B (Small)',
+      contextWindow: 96000,
+      specialization: 'Chat Agent',
+      description: 'Best for simple content identification and user guidance',
+      costTier: 'Most economical',
+    },
+    MEDIUM: {
+      id: 'z-ai/glm-4.5',
+      name: 'GLM 4.5 (Medium)',
+      contextWindow: 256000,
+      specialization: 'Logic & Reasoning Engine',
+      description: 'OPTIMAL for clip discovery - superior logical thinking',
+      costTier: 'Balanced',
+      recommended: true,
+    },
+    LARGE: {
+      id: 'meta-llama/llama-4-maverick',
+      name: 'Llama 4 Maverick (Large)',
+      contextWindow: 1000000,
+      specialization: 'Large Transcript Processor',
+      description: 'Best for massive content requiring full context',
+      costTier: 'Premium',
+    },
+  };
 
   useEffect(() => {
     if (user?.openaiApiKey) {
       setOpenaiApiKey(user.openaiApiKey);
     }
   }, [user]);
+
+  // Load OpenRouter settings
+  useEffect(() => {
+    const loadOpenRouterSettings = async () => {
+      try {
+        const response = await apiRequest("GET", "/api/chat/user/openrouter-settings") as any;
+        if (response?.configured) {
+          setOpenRouterConfigured(true);
+          // Show placeholder indicating it's configured
+          setOpenRouterApiKey(''); // Keep input empty but show it as configured
+        } else {
+          setOpenRouterConfigured(false);
+          setOpenRouterApiKey('');
+        }
+      } catch (error) {
+        // Settings don't exist yet, which is fine
+        setOpenRouterConfigured(false);
+        setOpenRouterApiKey('');
+      }
+    };
+
+    if (isOpen) {
+      loadOpenRouterSettings();
+    }
+  }, [isOpen]);
+
+  // Load Cloudinary settings
+  useEffect(() => {
+    const loadCloudinarySettings = async () => {
+      try {
+        const response = await apiRequest("GET", "/api/chat/user/cloudinary-settings") as any;
+        if (response?.configured) {
+          setCloudinaryConfigured(true);
+          // Keep input empty but show it as configured
+          setCloudinaryCloudName('');
+          setCloudinaryApiKey('');
+          setCloudinaryApiSecret('');
+        } else {
+          setCloudinaryConfigured(false);
+          setCloudinaryCloudName('');
+          setCloudinaryApiKey('');
+          setCloudinaryApiSecret('');
+        }
+      } catch (error) {
+        // Settings don't exist yet, which is fine
+        setCloudinaryConfigured(false);
+        setCloudinaryCloudName('');
+        setCloudinaryApiKey('');
+        setCloudinaryApiSecret('');
+      }
+    };
+
+    if (isOpen) {
+      loadCloudinarySettings();
+    }
+  }, [isOpen]);
 
   const handleSaveApiKey = async () => {
     if (!openaiApiKey.trim()) {
@@ -113,11 +216,180 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  // OpenRouter functions
+  const handleSaveOpenRouterKey = async () => {
+    if (!openRouterApiKey.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an OpenRouter API key",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!openRouterApiKey.startsWith('sk-or-')) {
+      toast({
+        title: "Error", 
+        description: "Invalid API key format. OpenRouter API keys start with 'sk-or-'",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingOpenRouter(true);
+    try {
+      await apiRequest("POST", "/api/chat/user/openrouter-settings", {
+        apiKey: openRouterApiKey,
+      });
+
+      toast({
+        title: "Success",
+        description: "OpenRouter settings saved successfully",
+      });
+
+      setOpenRouterConfigured(true);
+      setOpenRouterTestResult("success");
+    } catch (error) {
+      console.error("Failed to save OpenRouter settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save OpenRouter settings. Please try again.",
+        variant: "destructive",
+      });
+      setOpenRouterTestResult("error");
+    } finally {
+      setIsSavingOpenRouter(false);
+    }
+  };
+
+  const handleTestOpenRouter = async () => {
+    if (!openRouterApiKey.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an OpenRouter API key first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTestingOpenRouter(true);
+    setOpenRouterTestResult(null);
+
+    try {
+      // Test the API key by saving it first
+      await apiRequest("POST", "/api/chat/user/openrouter-settings", {
+        apiKey: openRouterApiKey,
+      });
+
+      setOpenRouterConfigured(true);
+      setOpenRouterTestResult("success");
+      toast({
+        title: "Success",
+        description: "OpenRouter API key is valid and working",
+      });
+    } catch (error) {
+      setOpenRouterTestResult("error");
+      toast({
+        title: "Error",
+        description: "OpenRouter API key test failed. Please check your key.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTestingOpenRouter(false);
+    }
+  };
+
+  // Cloudinary functions
+  const handleSaveCloudinarySettings = async () => {
+    if (!cloudinaryCloudName.trim() || !cloudinaryApiKey.trim() || !cloudinaryApiSecret.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter all Cloudinary credentials",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingCloudinary(true);
+    try {
+      await apiRequest("POST", "/api/chat/user/cloudinary-settings", {
+        cloudName: cloudinaryCloudName,
+        apiKey: cloudinaryApiKey,
+        apiSecret: cloudinaryApiSecret,
+      });
+
+      toast({
+        title: "Success",
+        description: "Cloudinary settings saved successfully",
+      });
+
+      setCloudinaryConfigured(true);
+      setCloudinaryTestResult("success");
+    } catch (error) {
+      console.error("Failed to save Cloudinary settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save Cloudinary settings. Please check your credentials and try again.",
+        variant: "destructive",
+      });
+      setCloudinaryTestResult("error");
+    } finally {
+      setIsSavingCloudinary(false);
+    }
+  };
+
+  const handleTestCloudinary = async () => {
+    if (!cloudinaryCloudName.trim() || !cloudinaryApiKey.trim() || !cloudinaryApiSecret.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter all Cloudinary credentials first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTestingCloudinary(true);
+    setCloudinaryTestResult(null);
+
+    try {
+      // Test the credentials by saving them first
+      await apiRequest("POST", "/api/chat/user/cloudinary-settings", {
+        cloudName: cloudinaryCloudName,
+        apiKey: cloudinaryApiKey,
+        apiSecret: cloudinaryApiSecret,
+      });
+
+      setCloudinaryConfigured(true);
+      setCloudinaryTestResult("success");
+      toast({
+        title: "Success",
+        description: "Cloudinary credentials are valid and working",
+      });
+    } catch (error) {
+      setCloudinaryTestResult("error");
+      toast({
+        title: "Error",
+        description: "Cloudinary credentials test failed. Please check your credentials.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTestingCloudinary(false);
+    }
+  };
+
   const handleResetSettings = () => {
     setOpenaiApiKey("");
     setDefaultQuality("1080p");
     setConcurrentJobs("1");
     setApiTestResult(null);
+    setOpenRouterApiKey("");
+    setOpenRouterTestResult(null);
+    setOpenRouterConfigured(false);
+    setCloudinaryCloudName("");
+    setCloudinaryApiKey("");
+    setCloudinaryApiSecret("");
+    setCloudinaryTestResult(null);
+    setCloudinaryConfigured(false);
     
     toast({
       title: "Settings Reset",
@@ -142,9 +414,76 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       );
     } else if (user?.openaiApiKey) {
       return (
-        <div className="flex items-center space-x-2 text-accent">
-          <div className="w-2 h-2 bg-accent rounded-full" />
-          <span className="text-sm">Configured</span>
+        <div className="flex items-center space-x-2 text-green-400">
+          <CheckCircle className="h-4 w-4" />
+          <span className="text-sm font-medium">Credentials Saved</span>
+          <Badge variant="secondary" className="ml-1">Ready</Badge>
+        </div>
+      );
+    } else {
+      return (
+        <div className="flex items-center space-x-2 text-muted-foreground">
+          <div className="w-2 h-2 bg-muted-foreground rounded-full" />
+          <span className="text-sm">Not Configured</span>
+        </div>
+      );
+    }
+  };
+
+  const renderOpenRouterStatus = () => {
+    if (openRouterTestResult === "success") {
+      return (
+        <div className="flex items-center space-x-2 text-green-400">
+          <CheckCircle className="h-4 w-4" />
+          <span className="text-sm">Connected</span>
+        </div>
+      );
+    } else if (openRouterTestResult === "error") {
+      return (
+        <div className="flex items-center space-x-2 text-destructive">
+          <XCircle className="h-4 w-4" />
+          <span className="text-sm">Connection Failed</span>
+        </div>
+      );
+    } else if (openRouterConfigured) {
+      return (
+        <div className="flex items-center space-x-2 text-green-400">
+          <CheckCircle className="h-4 w-4" />
+          <span className="text-sm font-medium">Credentials Saved</span>
+          <Badge variant="secondary" className="ml-1">Ready</Badge>
+        </div>
+      );
+    } else {
+      return (
+        <div className="flex items-center space-x-2 text-muted-foreground">
+          <div className="w-2 h-2 bg-muted-foreground rounded-full" />
+          <span className="text-sm">Not Configured</span>
+        </div>
+      );
+    }
+  };
+
+  const renderCloudinaryStatus = () => {
+    if (cloudinaryTestResult === "success") {
+      return (
+        <div className="flex items-center space-x-2 text-green-400">
+          <CheckCircle className="h-4 w-4" />
+          <span className="text-sm">Connected</span>
+        </div>
+      );
+    } else if (cloudinaryTestResult === "error") {
+      return (
+        <div className="flex items-center space-x-2 text-destructive">
+          <XCircle className="h-4 w-4" />
+          <span className="text-sm">Connection Failed</span>
+        </div>
+      );
+    } else if (cloudinaryConfigured) {
+      return (
+        <div className="flex items-center space-x-2 text-green-400">
+          <CheckCircle className="h-4 w-4" />
+          <span className="text-sm font-medium">Credentials Saved</span>
+          <Badge variant="secondary" className="ml-1">Ready</Badge>
         </div>
       );
     } else {
@@ -248,6 +587,225 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     data-testid="button-save-api-key"
                   >
                     {isSaving ? "Saving..." : "Save API Key"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* OpenRouter AI Section */}
+            <div className="pt-6 border-t border-border">
+              <h3 className="text-lg font-semibold mb-4">AI Clip Discovery</h3>
+              
+              {/* OpenRouter API Section */}
+              <div className="bg-muted rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Brain className="h-4 w-4 text-primary" />
+                    <span className="font-medium">OpenRouter API</span>
+                  </div>
+                  {renderOpenRouterStatus()}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Required for AI-powered clip discovery. Uses your own OpenRouter API key for cost transparency.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="openrouterKey">OpenRouter API Key</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      id="openrouterKey"
+                      type={showOpenRouterKey ? "text" : "password"}
+                      placeholder={openRouterConfigured ? "API key configured (enter new key to update)" : "sk-or-..."}
+                      value={openRouterApiKey}
+                      onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                      className="pr-10"
+                      data-testid="input-openrouter-key"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
+                      onClick={() => setShowOpenRouterKey(!showOpenRouterKey)}
+                      data-testid="button-toggle-openrouter-key-visibility"
+                    >
+                      {showOpenRouterKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Get your API key from{" "}
+                    <a
+                      href="https://openrouter.ai/keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      OpenRouter Platform
+                    </a>
+                  </p>
+                </div>
+
+                {/* AI Model Orchestration Information */}
+                <div>
+                  <Label>AI Model Orchestration</Label>
+                  <div className="bg-muted/50 rounded-lg p-3 mt-1">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Your AI assistant automatically uses three specialized models based on what you request:
+                    </p>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
+                        <div>
+                          <div className="font-medium">Conversation (Gemma 27B)</div>
+                          <div className="text-muted-foreground">Handles all chat interactions and coordinates other models</div>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5 flex-shrink-0"></div>
+                        <div>
+                          <div className="font-medium">Clip Analysis (GLM 4.5)</div>
+                          <div className="text-muted-foreground">Automatically finds viral moments when you request clips</div>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full mt-1.5 flex-shrink-0"></div>
+                        <div>
+                          <div className="font-medium">Deep Analysis (Llama 4 Maverick)</div>
+                          <div className="text-muted-foreground">Handles complex content questions and long transcripts</div>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      No manual configuration needed - the AI chooses the right model automatically!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex space-x-3">
+                  <Button
+                    onClick={handleTestOpenRouter}
+                    disabled={isTestingOpenRouter || !openRouterApiKey.trim()}
+                    variant="outline"
+                    data-testid="button-test-openrouter"
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    {isTestingOpenRouter ? "Testing..." : "Test Connection"}
+                  </Button>
+                  
+                  <Button
+                    onClick={handleSaveOpenRouterKey}
+                    disabled={isSavingOpenRouter || !openRouterApiKey.trim()}
+                    data-testid="button-save-openrouter-key"
+                  >
+                    {isSavingOpenRouter ? "Saving..." : "Save Settings"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Cloudinary Storage Section */}
+            <div className="pt-6 border-t border-border">
+              <h3 className="text-lg font-semibold mb-4">Video Storage</h3>
+              
+              {/* Cloudinary Settings */}
+              <div className="bg-muted rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl">☁️</span>
+                    <span className="font-medium">Cloudinary Storage</span>
+                  </div>
+                  {renderCloudinaryStatus()}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Use your own Cloudinary account for video storage and processing. Falls back to system defaults if not configured.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="cloudinaryCloudName">Cloud Name</Label>
+                  <Input
+                    id="cloudinaryCloudName"
+                    type="text"
+                    placeholder={cloudinaryConfigured ? "Cloud name configured (enter new to update)" : "your-cloud-name"}
+                    value={cloudinaryCloudName}
+                    onChange={(e) => setCloudinaryCloudName(e.target.value)}
+                    className="mt-1"
+                    data-testid="input-cloudinary-cloud-name"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Found in your Cloudinary dashboard under "Account Details"
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="cloudinaryApiKey">API Key</Label>
+                  <Input
+                    id="cloudinaryApiKey"
+                    type="text"
+                    placeholder={cloudinaryConfigured ? "API key configured (enter new to update)" : "123456789012345"}
+                    value={cloudinaryApiKey}
+                    onChange={(e) => setCloudinaryApiKey(e.target.value)}
+                    className="mt-1"
+                    data-testid="input-cloudinary-api-key"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="cloudinaryApiSecret">API Secret</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      id="cloudinaryApiSecret"
+                      type={showCloudinarySecret ? "text" : "password"}
+                      placeholder={cloudinaryConfigured ? "API secret configured (enter new to update)" : "abcdefghijk_lmnopqrstuv-wxyz123456"}
+                      value={cloudinaryApiSecret}
+                      onChange={(e) => setCloudinaryApiSecret(e.target.value)}
+                      className="pr-10"
+                      data-testid="input-cloudinary-api-secret"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
+                      onClick={() => setShowCloudinarySecret(!showCloudinarySecret)}
+                      data-testid="button-toggle-cloudinary-secret-visibility"
+                    >
+                      {showCloudinarySecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Get your credentials from{" "}
+                    <a
+                      href="https://cloudinary.com/console"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Cloudinary Console
+                    </a>
+                  </p>
+                </div>
+
+                <div className="flex space-x-3">
+                  <Button
+                    onClick={handleTestCloudinary}
+                    disabled={isTestingCloudinary || !cloudinaryCloudName.trim() || !cloudinaryApiKey.trim() || !cloudinaryApiSecret.trim()}
+                    variant="outline"
+                    data-testid="button-test-cloudinary"
+                  >
+                    <TestTube className="h-4 w-4 mr-2" />
+                    {isTestingCloudinary ? "Testing..." : "Test Connection"}
+                  </Button>
+                  
+                  <Button
+                    onClick={handleSaveCloudinarySettings}
+                    disabled={isSavingCloudinary || !cloudinaryCloudName.trim() || !cloudinaryApiKey.trim() || !cloudinaryApiSecret.trim()}
+                    data-testid="button-save-cloudinary-settings"
+                  >
+                    {isSavingCloudinary ? "Saving..." : "Save Settings"}
                   </Button>
                 </div>
               </div>

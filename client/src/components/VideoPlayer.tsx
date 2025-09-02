@@ -28,6 +28,8 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(({
 }, ref) => {
   // Create a callback ref that will be called when the video element is available
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const [videoDimensions, setVideoDimensions] = useState<{width: number, height: number} | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   // Use a callback ref to capture the video element when it's mounted
   const videoCallbackRef = useCallback((element: HTMLVideoElement | null) => {
@@ -45,10 +47,29 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(({
       onTimeUpdate?.(time);
     };
 
+    const handleLoadedMetadata = () => {
+      if (videoElement.videoWidth && videoElement.videoHeight) {
+        // Delay dimension update to prevent jarring resize effect
+        setTimeout(() => {
+          setVideoDimensions({
+            width: videoElement.videoWidth,
+            height: videoElement.videoHeight
+          });
+          console.log('📐 Video dimensions detected:', {
+            width: videoElement.videoWidth,
+            height: videoElement.videoHeight,
+            aspectRatio: (videoElement.videoWidth / videoElement.videoHeight).toFixed(2)
+          });
+        }, 100); // Small delay to let video settle
+      }
+    };
+
     videoElement.addEventListener('timeupdate', handleTimeUpdate);
+    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
 
     return () => {
       videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
     };
   }, [onTimeUpdate, videoElement]);
 
@@ -62,10 +83,65 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(({
     }
   }, [currentTime, videoElement]);
 
+  // Handle window resize to recalculate optimal dimensions
+  useEffect(() => {
+    const handleResize = () => {
+      if (videoDimensions) {
+        // Force a re-render with new dimensions by updating state
+        setVideoDimensions({...videoDimensions});
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [videoDimensions]);
+
+  // Calculate intelligent container styling based on video aspect ratio
+  const getOptimalContainerStyle = () => {
+    if (!videoDimensions || !containerRef.current) {
+      return { height: '100%' };
+    }
+
+    const videoAspectRatio = videoDimensions.width / videoDimensions.height;
+    const container = containerRef.current.parentElement;
+    
+    if (!container) return { height: '100%' };
+    
+    const containerWidth = container.clientWidth;
+    // More generous height limits to prevent cropping
+    const availableHeight = window.innerHeight - 200; // Reserve 200px for controls and header
+    const maxHeight = Math.max(availableHeight * 0.8, 400); // At least 400px, up to 80% of available space
+    
+    // Calculate height needed to show full video at this width
+    const optimalHeight = containerWidth / videoAspectRatio;
+    
+    // Prefer optimal height, only constrain if absolutely necessary
+    const finalHeight = Math.min(optimalHeight, maxHeight);
+    
+    console.log('📏 Container sizing:', {
+      videoAspectRatio: videoAspectRatio.toFixed(2),
+      containerWidth,
+      optimalHeight: Math.round(optimalHeight),
+      maxHeight,
+      finalHeight: Math.round(finalHeight)
+    });
+    
+    return { 
+      height: `${finalHeight}px`,
+      minHeight: '300px' // Ensure minimum usable size
+    };
+  };
+
+  const containerStyle = getOptimalContainerStyle();
+
   return (
     <div className="bg-card rounded-lg overflow-hidden" data-testid="video-player">
-      {/* Video Element - Maintain aspect ratio */}
-      <div className="relative bg-black w-full h-full flex items-center justify-center">
+      {/* Video Element - Intelligent aspect ratio sizing */}
+      <div 
+        ref={containerRef}
+        className="relative bg-black w-full flex items-center justify-center"
+        style={containerStyle}
+      >
         {video ? (
           // Use ChunkedVideoPlayer for video objects (supports chunking)
           <ChunkedVideoPlayer

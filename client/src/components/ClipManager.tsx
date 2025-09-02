@@ -295,7 +295,7 @@ export function ClipManager({
           </Badge>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3">
+        <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
           {clips.length === 0 ? (
             <Card className="border-dashed border-2 border-gray-200">
               <CardContent className="pt-8 pb-8">
@@ -348,40 +348,46 @@ export function ClipManager({
                       </div>
                     )}
 
-                    {/* ACTION BUTTONS */}
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onPreviewClip(clip)}
-                        className="flex-1 h-8 text-xs"
-                        data-testid={`button-preview-${clip.id}`}
-                      >
-                        <Play className="h-3 w-3 mr-1" />
-                        Preview
-                      </Button>
-
-                      {clip.status === "ready" && (
+                    {/* ACTION BUTTONS - Stacked layout for better spacing */}
+                    <div className="space-y-2">
+                      {/* Delete Button - Moved to top for better visibility */}
+                      <div className="flex justify-end">
                         <Button
+                          variant="ghost"
                           size="sm"
-                          onClick={() => onDownloadClip(clip.id)}
-                          className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
-                          data-testid={`button-download-${clip.id}`}
+                          onClick={() => onDeleteClip(clip.id)}
+                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          data-testid={`button-delete-${clip.id}`}
                         >
-                          <Download className="h-3 w-3 mr-1" />
-                          Download
+                          <Trash2 className="h-3 w-3" />
                         </Button>
-                      )}
+                      </div>
+                      
+                      {/* Main Action Buttons */}
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onPreviewClip(clip)}
+                          className="flex-1 h-8 text-xs"
+                          data-testid={`button-preview-${clip.id}`}
+                        >
+                          <Play className="h-3 w-3 mr-1" />
+                          Preview
+                        </Button>
 
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDeleteClip(clip.id)}
-                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                        data-testid={`button-delete-${clip.id}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                        {clip.status === "ready" && (
+                          <Button
+                            size="sm"
+                            onClick={() => onDownloadClip(clip.id)}
+                            className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
+                            data-testid={`button-download-${clip.id}`}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Download
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </CardContent>

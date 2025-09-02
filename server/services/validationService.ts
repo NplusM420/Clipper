@@ -15,9 +15,9 @@ export const schemas = {
   
   // API key validation
   openaiApiKey: z.string()
-    .min(40, 'OpenAI API key too short')
+    .min(20, 'OpenAI API key too short')
     .max(200, 'OpenAI API key too long')
-    .regex(/^sk-[a-zA-Z0-9]+$/, 'Invalid OpenAI API key format'),
+    .regex(/^sk-/, 'Invalid OpenAI API key format - must start with sk-'),
   
   // Clip validation
   clipId: z.string().uuid('Invalid clip ID format'),

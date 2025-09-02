@@ -99,6 +99,78 @@ export const clips = pgTable("clips", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// OpenRouter user settings
+export const openRouterSettings = pgTable("openrouter_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  apiKey: text("api_key").notNull(), // Encrypted OpenRouter API key
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Cloudinary user settings
+export const cloudinarySettings = pgTable("cloudinary_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  cloudName: text("cloud_name").notNull(), // Encrypted Cloudinary cloud name
+  apiKey: text("api_key").notNull(), // Encrypted Cloudinary API key
+  apiSecret: text("api_secret").notNull(), // Encrypted Cloudinary API secret
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Chat sessions
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  videoId: varchar("video_id").notNull().references(() => videos.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: jsonb("metadata"), // Additional session data
+});
+
+// Chat messages
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => chatSessions.id, { onDelete: "cascade" }),
+  sender: varchar("sender", { length: 10 }).notNull(), // 'user' or 'ai'
+  content: text("content").notNull(),
+  messageType: varchar("message_type", { length: 20 }).notNull().default("text"), // text, clip_suggestion, analysis
+  metadata: jsonb("metadata"), // Clip suggestions, processing info, etc.
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// AI model calls tracking
+export const aiModelCalls = pgTable("ai_model_calls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  modelUsed: varchar("model_used", { length: 100 }).notNull(), // 'gemma-27b', 'glm-4.5', 'llama-4-maverick'
+  tokensUsed: integer("tokens_used").notNull(),
+  costCents: integer("cost_cents"), // Cost in cents
+  processingTimeMs: integer("processing_time_ms"),
+  success: boolean("success").notNull().default(true),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// AI discovered clips (before creation)
+export const aiDiscoveredClips = pgTable("ai_discovered_clips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  videoId: varchar("video_id").notNull().references(() => videos.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  startTime: real("start_time").notNull(),
+  endTime: real("end_time").notNull(),
+  confidence: integer("confidence").notNull(), // 0-100
+  platform: varchar("platform", { length: 20 }), // 'tiktok', 'youtube', 'linkedin', etc.
+  reasoning: text("reasoning"), // AI's explanation for why this is a good clip
+  created: boolean("created").default(false), // Whether user created this clip
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -146,6 +218,56 @@ export const insertClipSchema = createInsertSchema(clips).pick({
   quality: true,
 });
 
+export const insertOpenRouterSettingsSchema = createInsertSchema(openRouterSettings).pick({
+  userId: true,
+  apiKey: true,
+});
+
+export const insertCloudinarySettingsSchema = createInsertSchema(cloudinarySettings).pick({
+  userId: true,
+  cloudName: true,
+  apiKey: true,
+  apiSecret: true,
+});
+
+export const insertChatSessionSchema = createInsertSchema(chatSessions).pick({
+  userId: true,
+  videoId: true,
+  title: true,
+  metadata: true,
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).pick({
+  sessionId: true,
+  sender: true,
+  content: true,
+  messageType: true,
+  metadata: true,
+});
+
+export const insertAiModelCallSchema = createInsertSchema(aiModelCalls).pick({
+  messageId: true,
+  userId: true,
+  modelUsed: true,
+  tokensUsed: true,
+  costCents: true,
+  processingTimeMs: true,
+  success: true,
+  errorMessage: true,
+});
+
+export const insertAiDiscoveredClipSchema = createInsertSchema(aiDiscoveredClips).pick({
+  messageId: true,
+  videoId: true,
+  title: true,
+  description: true,
+  startTime: true,
+  endTime: true,
+  confidence: true,
+  platform: true,
+  reasoning: true,
+});
+
 // Types  
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = Partial<z.infer<typeof insertUserSchema>> & { id: string };
@@ -158,6 +280,18 @@ export type Clip = typeof clips.$inferSelect;
 export type InsertClip = z.infer<typeof insertClipSchema>;
 export type VideoPart = typeof videoParts.$inferSelect;
 export type InsertVideoPart = z.infer<typeof insertVideoPartSchema>;
+export type OpenRouterSettings = typeof openRouterSettings.$inferSelect;
+export type InsertOpenRouterSettings = z.infer<typeof insertOpenRouterSettingsSchema>;
+export type CloudinarySettings = typeof cloudinarySettings.$inferSelect;
+export type InsertCloudinarySettings = z.infer<typeof insertCloudinarySettingsSchema>;
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type AiModelCall = typeof aiModelCalls.$inferSelect;
+export type InsertAiModelCall = z.infer<typeof insertAiModelCallSchema>;
+export type AiDiscoveredClip = typeof aiDiscoveredClips.$inferSelect;
+export type InsertAiDiscoveredClip = z.infer<typeof insertAiDiscoveredClipSchema>;
 
 // Transcript segment type
 export type TranscriptSegment = {

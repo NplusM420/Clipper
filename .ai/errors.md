@@ -1,153 +1,91 @@
-
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
-ChunkedVideoPlayer.tsx:421 📺 Chunk ready to play: 1
-ChunkedVideoPlayer.tsx:164 📺 Can play event for chunk: 2
-ChunkedVideoPlayer.tsx:145 ▶️ Attempting to play chunk: 2
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 2, partDuration: 263.02667, partStartTime: 263.02667, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 2, totalParts: 8, wasPlaying: true, currentTime: '262.6', newSrc: 'video_1756518469460_part_1'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: true
-ChunkedVideoPlayer.tsx:366 🎥 Chunked playback setup: {videoId: 'bfd903f5-79e8-41a7-9286-715adf018346', totalParts: 8, currentPart: 1, partDuration: 263.02667, partStartTime: 0, …}
-ChunkedVideoPlayer.tsx:388 🎬 Initial chunked source: {part: 1, totalParts: 8, src: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:121 🎬 Source update: {part: 1, totalParts: 8, wasPlaying: false, currentTime: '262.6', newSrc: 'video_1756518469460_part_0'}
-ChunkedVideoPlayer.tsx:140 🔄 Should auto play: false
-ChunkedVideoPlayer.tsx:147 ✅ Successfully playing chunk: 2
-ChunkedVideoPlayer.tsx:418 🔄 Loading chunk: 1
-ChunkedVideoPlayer.tsx:269 🔄 Part transition triggered (near end of chunk file): {from: 1, to: 2, currentTime: '262.6', chunkFileDuration: '263.1', originalSegmentDuration: '263.0', …}
-ChunkedVideoPlayer.tsx:282 ✅ Transitioning to chunk: 2
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string
+Loading Cloudinary settings for user: 549733e5-a2c6-4c0f-bde1-9357b3d4654e
+Querying database for Cloudinary settings for user: 549733e5-a2c6-4c0f-bde1-9357b3d4654e
+(node:18732) [DEP0106] DeprecationWarning: crypto.createDecipher is deprecated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Found encrypted Cloudinary settings, decrypting...
+Successfully decrypted Cloudinary settings for cloud: dapernzun
+Cloudinary settings found: true
+Returning configured Cloudinary settings
+1:23:50 PM [express] GET /api/chat/user/openrouter-settings 304 in 210ms :: {"configured":true,"apiK…
+1:23:50 PM [express] GET /api/chat/user/cloudinary-settings 304 in 212ms :: {"configured":true,"clou…
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string
+1:23:52 PM [express] GET /api/videos/bfd903f5-79e8-41a7-9286-715adf018346/clips 304 in 225ms :: [{"i…
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string
+1:23:54 PM [express] GET /api/videos/bfd903f5-79e8-41a7-9286-715adf018346/clips 304 in 229ms :: [{"i…
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string
+1:23:54 PM [express] GET /api/videos 304 in 197ms :: [{"id":"bfd903f5-79e8-41a7-9286-715adf018346","…
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string
+1:23:56 PM [express] GET /api/videos/bfd903f5-79e8-41a7-9286-715adf018346/clips 304 in 235ms :: [{"i…
+Decryption error: Error: error:1C800064:Provider routines::bad decrypt
+    at Decipheriv.final (node:internal/crypto/cipher:199:29)
+    at EncryptionService.decrypt (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/services/encryptionService.ts:1:1786)
+    at DatabaseStorage.getUser (file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/storage.ts:1:514)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///D:/Clients/AI%20Layer%20Labs/Demos/ClipperBuild/Clipper_fresh/server/auth.ts:1:1874 {
+  library: 'Provider routines',
+  reason: 'bad decrypt',
+  code: 'ERR_OSSL_BAD_DECRYPT'
+}
+Failed to decrypt API key, returning empty string

@@ -166,6 +166,41 @@
     background: var(--foreground);
   }
 
+  /* Enhanced custom scrollbar for clips management */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--muted);
+    border-radius: 4px;
+    margin: 2px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(217, 91%, 60%) 0%, hsl(217, 91%, 50%) 100%);
+    border-radius: 4px;
+    border: 1px solid var(--muted);
+    transition: all 0.2s ease;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(217, 91%, 70%) 0%, hsl(217, 91%, 60%) 100%);
+    transform: scaleX(1.1);
+    border-color: var(--border);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(180deg, hsl(217, 91%, 80%) 0%, hsl(217, 91%, 70%) 100%);
+  }
+
+  /* Firefox scrollbar styling */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(217, 91%, 60%) var(--muted);
+  }
+
   /* Upload progress animations */
   .upload-progress {
     background: linear-gradient(90deg, var(--primary) 0%, var(--primary) 50%, transparent 50%, transparent 100%);

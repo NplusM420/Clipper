@@ -82,10 +82,8 @@ export class VideoChunkingService {
    * Gets the URL for a specific video part
    */
   getPartUrl(part: VideoPart): string {
-    // Generate Cloudinary URL from public ID
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dapernzun';
-    // Use unsigned, cache-friendly delivery with no credentials; ensure extension is omitted
-    return `https://res.cloudinary.com/${cloudName}/video/upload/f_auto,q_auto/${part.cloudinaryPublicId}`;
+    // Route through server to avoid exposing cloud configuration
+    return `${window.location.origin}/objects/${part.cloudinaryPublicId}`;
   }
 
   /**

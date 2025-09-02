@@ -13,6 +13,7 @@ import fetch from "node-fetch";
 import ffmpeg from "fluent-ffmpeg";
 import { transcripts, videos } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { db } from "../db";
 import { RateLimiter } from "limiter";
 import { createHash } from "crypto";
 import NodeCache from "node-cache";
@@ -94,6 +95,16 @@ export class TranscriptionService {
       tokensPerInterval: 45,
       interval: 'minute'
     });
+  }
+
+  async testApiKey(): Promise<boolean> {
+    try {
+      await this.openai.models.list();
+      return true;
+    } catch (error) {
+      console.error("OpenAI API key test failed:", error);
+      return false;
+    }
   }
 
   /**
@@ -401,6 +412,16 @@ export class TranscriptionService {
 
   async updateTranscript(transcriptId: string, segments: any[]): Promise<void> {
     await storage.updateTranscript(transcriptId, segments, true);
+  }
+
+  async getTranscriptByVideoId(videoId: string): Promise<any> {
+    const [transcript] = await db
+      .select()
+      .from(transcripts)
+      .where(eq(transcripts.videoId, videoId))
+      .limit(1);
+
+    return transcript || null;
   }
 
   /**
@@ -1623,4 +1644,15 @@ export class TranscriptionService {
       lastError || undefined
     );
   }
+}
+
+// Static method for getting transcript without requiring API key
+export async function getTranscriptByVideoId(videoId: string): Promise<any> {
+  const [transcript] = await db
+    .select()
+    .from(transcripts)
+    .where(eq(transcripts.videoId, videoId))
+    .limit(1);
+
+  return transcript || null;
 }

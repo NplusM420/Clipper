@@ -31,3 +31,6 @@ Icon?
 # Temporary files
 tmp/
 temp/
+
+# AI directory (for tools/prompts)
+.ai/

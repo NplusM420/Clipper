@@ -344,12 +344,11 @@ export class VideoProcessingService {
     const chunkPaths: string[] = [];
     
     try {
-      // Download all chunks from Cloudinary
-      const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'dapernzun';
+      // Download all chunks using object storage URL generation (avoids hardcoded cloud name)
       
       for (let i = 0; i < sortedParts.length; i++) {
         const part = sortedParts[i];
-        const chunkUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${part.cloudinaryPublicId}`;
+        const chunkUrl = this.objectStorage.generateUrl(part.cloudinaryPublicId, { resource_type: 'video', secure: true });
         const chunkPath = path.join(tempDir, `${videoId}_clip_chunk_${part.partIndex}.mp4`);
         
         console.log(`📥 Downloading chunk ${i + 1}/${sortedParts.length} for clipping...`);

@@ -8,8 +8,9 @@ import {
   getObjectAclPolicy,
   setObjectAclPolicy,
 } from "./objectAcl";
+import { cloudinaryService } from "./services/cloudinaryService";
 
-// Configure Cloudinary
+// Global Cloudinary configuration (fallback)
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -26,10 +27,44 @@ export class ObjectNotFoundError extends Error {
 
 // Cloudinary-based object storage service
 export class ObjectStorageService {
-  constructor() {
-    // Verify Cloudinary configuration
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-      throw new Error("Cloudinary configuration missing. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables.");
+  private userCloudinarySettings?: { cloudName: string; apiKey: string; apiSecret: string };
+
+  constructor(userCloudinarySettings?: { cloudName: string; apiKey: string; apiSecret: string }) {
+    this.userCloudinarySettings = userCloudinarySettings;
+    
+    if (!userCloudinarySettings) {
+      // Verify global configuration if no user settings provided
+      if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        throw new Error("Cloudinary configuration missing. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables.");
+      }
+    }
+  }
+
+  // Static method to create ObjectStorageService with user-specific settings
+  static async createForUser(userId: string): Promise<ObjectStorageService> {
+    try {
+      const settings = await cloudinaryService.getEffectiveSettings(userId);
+      return new ObjectStorageService(settings);
+    } catch (error) {
+      // Fall back to environment settings if user settings fail
+      return new ObjectStorageService();
+    }
+  }
+
+  // Get configured cloudinary instance
+  private getCloudinaryInstance() {
+    if (this.userCloudinarySettings) {
+      // Configure cloudinary with user-specific settings temporarily
+      const currentConfig = cloudinary.config();
+      cloudinary.config({
+        cloud_name: this.userCloudinarySettings.cloudName,
+        api_key: this.userCloudinarySettings.apiKey,
+        api_secret: this.userCloudinarySettings.apiSecret,
+      });
+      return cloudinary;
+    } else {
+      // Use global configuration
+      return cloudinary;
     }
   }
 
@@ -58,7 +93,7 @@ export class ObjectStorageService {
         console.log(`📤 Uploading ${fileInput.length} bytes to Cloudinary via stream with options:`, JSON.stringify(uploadOptions, null, 2));
         
         result = await new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
+          const uploadStream = this.getCloudinaryInstance().uploader.upload_stream(
             uploadOptions,
             (error, result) => {
               if (error) {
@@ -95,7 +130,7 @@ export class ObjectStorageService {
       } else {
         // Upload from file path
         console.log(`📤 Uploading file ${fileInput} to Cloudinary with options:`, JSON.stringify(uploadOptions, null, 2));
-        result = await cloudinary.uploader.upload(fileInput, uploadOptions);
+        result = await this.getCloudinaryInstance().uploader.upload(fileInput, uploadOptions);
       }
       
       console.log(`✅ Upload successful:`, { public_id: (result as any).public_id, bytes: (result as any).bytes, format: (result as any).format });
@@ -193,14 +228,14 @@ export class ObjectStorageService {
       signatureParams.public_id = options.public_id;
     }
 
-    const signature = cloudinary.utils.api_sign_request(signatureParams, process.env.CLOUDINARY_API_SECRET!);
+    const signature = this.getCloudinaryInstance().utils.api_sign_request(signatureParams, this.getCloudinaryInstance().config().api_secret!);
 
     return {
       signature,
       timestamp,
-      api_key: process.env.CLOUDINARY_API_KEY!,
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-      upload_url: `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/${resource_type}/upload`,
+      api_key: this.getCloudinaryInstance().config().api_key!,
+      cloud_name: this.getCloudinaryInstance().config().cloud_name!,
+      upload_url: `https://api.cloudinary.com/v1_1/${this.getCloudinaryInstance().config().cloud_name}/${resource_type}/upload`,
       folder
     };
   }
@@ -208,7 +243,7 @@ export class ObjectStorageService {
   // Get file information from Cloudinary
   async getFileInfo(publicId: string, resourceType: 'image' | 'video' | 'raw' = 'video'): Promise<any> {
     try {
-      const result = await cloudinary.api.resource(publicId, { resource_type: resourceType });
+      const result = await this.getCloudinaryInstance().api.resource(publicId, { resource_type: resourceType });
       return result;
     } catch (error: any) {
       if (error.http_code === 404) {
@@ -221,7 +256,7 @@ export class ObjectStorageService {
   // Delete a file from Cloudinary
   async deleteFile(publicId: string, resourceType: 'image' | 'video' | 'raw' = 'video'): Promise<any> {
     try {
-      const result = await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+      const result = await this.getCloudinaryInstance().uploader.destroy(publicId, { resource_type: resourceType });
       return result;
     } catch (error) {
       console.error('Cloudinary delete error:', error);
@@ -235,7 +270,7 @@ export class ObjectStorageService {
     transformation?: any;
     secure?: boolean;
   } = {}): string {
-    return cloudinary.url(publicId, {
+    return this.getCloudinaryInstance().url(publicId, {
       resource_type: options.resource_type || 'video',
       secure: options.secure !== false,
       ...options.transformation && { transformation: options.transformation }
@@ -250,7 +285,7 @@ export class ObjectStorageService {
     height?: number;
     crop?: string;
   } = {}): string {
-    return cloudinary.url(publicId, {
+    return this.getCloudinaryInstance().url(publicId, {
       resource_type: 'video',
       secure: true,
       transformation: {
@@ -270,7 +305,7 @@ export class ObjectStorageService {
     crop?: string;
     quality?: string;
   } = {}): string {
-    return cloudinary.url(publicId, {
+    return this.getCloudinaryInstance().url(publicId, {
       resource_type: 'video',
       format: 'jpg',
       transformation: {
@@ -381,7 +416,7 @@ export class ObjectStorageService {
   // List files in a folder
   async listFiles(folder: string = 'video-clipper', resourceType: 'image' | 'video' | 'raw' = 'video'): Promise<any[]> {
     try {
-      const result = await cloudinary.api.resources({
+      const result = await this.getCloudinaryInstance().api.resources({
         type: 'upload',
         resource_type: resourceType,
         prefix: folder,

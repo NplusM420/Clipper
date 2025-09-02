@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { ClipManager } from "@/components/ClipManager";
+import { Timeline } from "@/components/Timeline";
 import { UploadModal } from "@/components/UploadModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { ManualTranscriptionButton } from "@/components/ManualTranscriptionButton";
@@ -32,6 +33,7 @@ import {
   SkipBack,
   SkipForward,
   Plus,
+  Brain,
 } from "lucide-react";
 import type { Video as VideoType, Clip, Transcript, TranscriptSegment } from "@shared/schema";
 
@@ -519,6 +521,15 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => window.location.href = '/ai-discovery'}
+                data-testid="nav-ai-discovery"
+              >
+                <Brain className="h-4 w-4 mr-2" />
+                AI Assistant
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setIsSettingsModalOpen(true)}
                 data-testid="nav-settings"
               >
@@ -527,6 +538,28 @@ export default function Dashboard() {
             </nav>
           </div>
           <div className="flex items-center space-x-4">
+            {/* Current Project Info - Moved from sidebar */}
+            {selectedVideo && (
+              <div className="flex items-center space-x-3 px-3 py-1 bg-muted/50 rounded-lg border">
+                <div className="w-8 h-8 bg-secondary rounded-md flex items-center justify-center flex-shrink-0">
+                  <FileVideo className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex items-center space-x-2 min-w-0">
+                  <h3 className="font-medium truncate max-w-40" data-testid="header-project-name">
+                    {selectedVideo.filename}
+                  </h3>
+                  <span className="text-sm text-muted-foreground">•</span>
+                  <span className="text-sm text-muted-foreground font-mono" data-testid="header-project-duration">
+                    {formatTime(selectedVideo.duration)}
+                  </span>
+                  <span className="text-sm text-muted-foreground">•</span>
+                  <div className="flex items-center space-x-1">
+                    {getVideoStatusIcon(selectedVideo)}
+                    <span className="text-sm">{getVideoStatusText(selectedVideo)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="text-sm text-muted-foreground">
               Videos: <span className="text-foreground font-medium">{videos.length}</span>
             </div>
@@ -563,41 +596,15 @@ export default function Dashboard() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Simplified for Clip Management */}
         <aside className="w-80 bg-card border-r border-border flex flex-col">
-          {/* Current Project */}
-          {selectedVideo && (
-            <div className="p-6 border-b border-border">
-              <h2 className="text-lg font-semibold mb-4">Current Project</h2>
-              <div className="bg-muted rounded-lg p-4">
-                <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-16 h-12 bg-secondary rounded-md flex items-center justify-center">
-                    <FileVideo className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium truncate" data-testid="current-project-name">
-                      {selectedVideo.filename}
-                    </h3>
-                    <p className="text-sm text-muted-foreground" data-testid="current-project-duration">
-                      {formatTime(selectedVideo.duration)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Status</span>
-                  <div className="flex items-center space-x-2">
-                    {getVideoStatusIcon(selectedVideo)}
-                    <span>{getVideoStatusText(selectedVideo)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Clip Management */}
+          {/* Expanded Clip Management - Now uses full sidebar */}
           {selectedVideo && (
             <div className="flex-1 overflow-hidden">
               <div className="p-6 h-full">
-                <h3 className="font-semibold mb-4">Clip Management</h3>
-                <div className="h-[calc(100%-2rem)] overflow-auto">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <FileVideo className="h-5 w-5 text-primary" />
+                  Clip Management
+                </h3>
+                <div className="h-[calc(100%-3rem)] overflow-auto custom-scrollbar">
                   <ClipManager
                     clips={clips}
                     onCreateClip={handleCreateClip}
@@ -631,8 +638,8 @@ export default function Dashboard() {
           <div className="flex-1 flex flex-col">
             {selectedVideo ? (
               <>
-                {/* Video Player Panel - Full height video display */}
-                <div className="h-[60vh] flex flex-col p-6 pb-3">
+                {/* Video Player Panel - Intelligent sizing */}
+                <div className="flex flex-col p-6 pb-3">
                   <VideoPlayer
                     video={selectedVideo}
                     onTimeUpdate={setCurrentTime}
@@ -650,7 +657,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Video Controls Panel - Moved from sidebar */}
-                <div className="border-t border-border p-6 pt-4">
+                <div className="border-t border-border p-6 pt-4 max-h-80 overflow-y-auto custom-scrollbar">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-medium text-lg">Video Controls</h4>
                     <div className="text-xs text-muted-foreground font-mono">
@@ -659,41 +666,30 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-6">
-                    {/* Timeline Slider */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>Timeline</span>
-                        <span>{Math.round((currentTime / selectedVideo.duration) * 100)}%</span>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="range"
-                          min="0"
-                          max={selectedVideo.duration}
-                          step="0.1"
-                          value={currentTime}
-                          onChange={(e) => {
-                            const newTime = parseFloat(e.target.value);
-                            setCurrentTime(newTime);
-                            handleSeek(newTime);
-                          }}
-                          className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer slider"
-                        />
-                        {/* Clip markers on timeline */}
-                        {clipStartTime !== undefined && (
-                          <div
-                            className="absolute top-0 w-1 h-2 bg-green-500 pointer-events-none rounded"
-                            style={{ left: `${(clipStartTime / selectedVideo.duration) * 100}%` }}
-                          />
-                        )}
-                        {clipEndTime !== undefined && (
-                          <div
-                            className="absolute top-0 w-1 h-2 bg-red-500 pointer-events-none rounded"
-                            style={{ left: `${(clipEndTime / selectedVideo.duration) * 100}%` }}
-                          />
-                        )}
-                      </div>
-                    </div>
+                    {/* Enhanced Timeline with Clip Visualization */}
+                    <Timeline
+                      duration={selectedVideo.duration}
+                      currentTime={currentTime}
+                      clips={clips.map(clip => ({
+                        id: clip.id,
+                        name: clip.name,
+                        startTime: clip.startTime,
+                        endTime: clip.endTime,
+                        status: clip.status as "ready" | "processing" | "error" | "pending",
+                        duration: clip.duration
+                      }))}
+                      onSeek={(time) => {
+                        setCurrentTime(time);
+                        handleSeek(time);
+                      }}
+                      onClipSelect={(clipId) => {
+                        const clip = clips.find(c => c.id === clipId);
+                        if (clip) {
+                          setCurrentTime(clip.startTime);
+                          handleSeek(clip.startTime);
+                        }
+                      }}
+                    />
 
                     {/* Playback Controls */}
                     <div className="flex items-center justify-center space-x-6">
@@ -749,10 +745,10 @@ export default function Dashboard() {
                       </Button>
                     </div>
 
-                    {/* Clip Management and Speed Controls */}
-                    <div className="grid grid-cols-2 gap-6">
+                    {/* Clip Management and Speed Controls - Responsive layout */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Clip Markers */}
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium">Clip Markers</span>
                           {(clipStartTime !== undefined || clipEndTime !== undefined) && (
@@ -797,7 +793,7 @@ export default function Dashboard() {
                       </div>
 
                       {/* Speed Control */}
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         <span className="text-sm font-medium">Playback Speed</span>
                         <div className="grid grid-cols-5 gap-1">
                           {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
@@ -1079,7 +1075,7 @@ export default function Dashboard() {
                       <p className="text-sm text-muted-foreground">Click on any segment to jump to that time</p>
                     </div>
                     
-                    <div className="h-96">
+                    <div className="flex-1 min-h-96 max-h-[calc(100vh-400px)]">
                       <TranscriptPanel
                         segments={(transcript?.segments as TranscriptSegment[]) || []}
                         currentTime={Math.round(currentTime * 5) / 5}
@@ -1097,6 +1093,31 @@ export default function Dashboard() {
                           });
                         }}
                       />
+                    </div>
+                    
+                    {/* Additional Tools Section - Utilizing bottom space */}
+                    <div className="border-t border-border pt-4 mt-4">
+                      <div className="space-y-3">
+                        <h5 className="font-medium text-sm text-muted-foreground">Quick Stats</h5>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div className="bg-muted/50 rounded-lg p-2">
+                            <div className="text-lg font-bold text-primary">{clips.length}</div>
+                            <div className="text-xs text-muted-foreground">Clips</div>
+                          </div>
+                          <div className="bg-muted/50 rounded-lg p-2">
+                            <div className="text-lg font-bold text-emerald-600">
+                              {clips.filter(c => c.status === 'ready').length}
+                            </div>
+                            <div className="text-xs text-muted-foreground">Ready</div>
+                          </div>
+                          <div className="bg-muted/50 rounded-lg p-2">
+                            <div className="text-lg font-bold text-accent">
+                              {Array.isArray(transcript?.segments) ? transcript.segments.length : 0}
+                            </div>
+                            <div className="text-xs text-muted-foreground">Segments</div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>

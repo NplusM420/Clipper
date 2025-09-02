@@ -7,12 +7,12 @@ export class EncryptionService {
 
   private static getEncryptionKey(): Buffer {
     const key = process.env.ENCRYPTION_KEY;
-    if (!key) {
-      throw new Error('ENCRYPTION_KEY environment variable is required for API key encryption');
+    if (!key || key === 'your_64_character_hex_encryption_key_here') {
+      throw new Error('ENCRYPTION_KEY environment variable must be set to a secure 64-character hex string. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
     }
     
-    // Ensure key is 32 bytes (256 bits)
-    return crypto.scryptSync(key, 'salt', this.keyLength);
+    // Convert hex string to buffer (32 bytes for 256-bit key)
+    return Buffer.from(key, 'hex');
   }
 
   /**
@@ -27,7 +27,7 @@ export class EncryptionService {
       const key = this.getEncryptionKey();
       const iv = crypto.randomBytes(this.ivLength);
       
-      const cipher = crypto.createCipher(this.algorithm, key);
+      const cipher = crypto.createCipheriv(this.algorithm, key, iv);
       
       let encrypted = cipher.update(text, 'utf8', 'hex');
       encrypted += cipher.final('hex');
@@ -59,15 +59,23 @@ export class EncryptionService {
           return encryptedData; // Return as-is if it's a plain API key
         }
         
-        // Try to decrypt as old format - just return empty if it fails
+        // Try to decrypt as old format using old method temporarily
         try {
-          const decipher = crypto.createDecipher('aes-256-cbc', key);
+          // Use the old scrypt-based key for legacy data
+          const legacyKey = crypto.scryptSync(process.env.ENCRYPTION_KEY!, 'salt', 32);
+          const decipher = crypto.createDecipher('aes-256-cbc', legacyKey);
           let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
           decrypted += decipher.final('utf8');
+          console.log('Successfully decrypted legacy format OpenAI key');
           return decrypted;
-        } catch (legacyError) {
-          console.warn('Could not decrypt legacy format, treating as plain text');
-          return encryptedData;
+        } catch (legacyError: any) {
+          console.warn('Could not decrypt legacy format:', legacyError.message);
+          // If it's a valid API key format, return as-is (might be unencrypted)
+          if (encryptedData.startsWith('sk-') && encryptedData.length > 20) {
+            console.log('Treating as unencrypted API key');
+            return encryptedData;
+          }
+          return '';
         }
       }
       
@@ -78,7 +86,7 @@ export class EncryptionService {
       const iv = Buffer.from(parts[0], 'hex');
       const encrypted = parts[1];
       
-      const decipher = crypto.createDecipher(this.algorithm, key);
+      const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
       
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
       decrypted += decipher.final('utf8');

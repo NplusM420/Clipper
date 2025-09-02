@@ -735,13 +735,13 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
       // Sort parts by partIndex to ensure correct order
       const sortedParts = parts.sort((a, b) => a.partIndex - b.partIndex);
       
-      // Download all chunks from Cloudinary
-      const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'dapernzun';
+      // Download all chunks using object storage URL generation (avoids hardcoded cloud name)
+      const objectStorage = new ObjectStorageService();
       const chunkPaths: string[] = [];
       
       for (let i = 0; i < sortedParts.length; i++) {
         const part = sortedParts[i];
-        const chunkUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${part.cloudinaryPublicId}`;
+        const chunkUrl = objectStorage.generateUrl(part.cloudinaryPublicId, { resource_type: 'video', secure: true });
         const chunkPath = path.join(tempDir, `${req.params.id}_chunk_${part.partIndex}.mp4`);
         
         console.log(`📥 Downloading chunk ${i + 1}/${sortedParts.length}: ${part.cloudinaryPublicId}`);
@@ -955,12 +955,18 @@ export async function registerRoutes(app: Express, io?: SocketServer): Promise<S
       const userId = req.user.id;
       const { apiKey } = req.validatedBody;
 
-      // Test the API key format (additional validation is already done by validation middleware)
+      // Test the API key by making a real API call to OpenAI
       try {
         const transcriptionService = new TranscriptionService(apiKey);
-        // API key format is already validated by the validation middleware
-      } catch (error) {
-        return res.status(400).json({ error: "Invalid API key" });
+        const isValid = await transcriptionService.testApiKey();
+        
+        if (!isValid) {
+          return res.status(400).json({ error: "Invalid API key - failed to authenticate with OpenAI" });
+        }
+        
+      } catch (error: any) {
+        console.error("OpenAI API key test error:", error);
+        return res.status(400).json({ error: "Failed to test API key" });
       }
 
       // Update user with encrypted API key
