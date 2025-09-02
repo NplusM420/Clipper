@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useSocket } from "@/hooks/useSocket";
 import {
   Brain,
   Settings,
@@ -79,6 +80,7 @@ const CONVERSATION_STARTERS = [
 export default function AIDashboard() {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const { socket, connected } = useSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // State management
@@ -88,6 +90,7 @@ export default function AIDashboard() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -120,9 +123,162 @@ export default function AIDashboard() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // WebSocket authentication and event handling
+  useEffect(() => {
+    if (!socket || !connected || !user) return;
+
+    console.log('🔌 Setting up WebSocket authentication and handlers');
+    
+    // Track authentication status locally to prevent join before auth
+    let isSocketAuthenticated = false;
+
+    // Authenticate with WebSocket
+    socket.emit('authenticate', {
+      userId: user.id,
+      username: user.username
+    });
+
+    // Handle authentication response
+    const handleAuthenticated = (data: { success: boolean }) => {
+      console.log('✅ WebSocket authenticated:', data.success);
+      isSocketAuthenticated = !!data.success;
+    };
+
+    // Handle session joined
+    const handleSessionJoined = (data: { sessionId: string; messages: any[] }) => {
+      console.log('🏠 Joined chat session:', data.sessionId);
+      setCurrentSessionId(data.sessionId);
+      
+      // Convert messages to ChatMessage format
+      const convertedMessages: ChatMessage[] = data.messages.map(msg => ({
+        id: msg.id,
+        sender: msg.sender,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp),
+        type: msg.messageType === 'clip_suggestion' ? 'clip_suggestion' : 
+              msg.messageType === 'analysis' ? 'analysis' : 'text',
+        metadata: msg.metadata
+      }));
+      
+      setMessages(convertedMessages);
+    };
+
+    // Handle new messages
+    const handleMessageReceived = (data: any) => {
+      console.log('💬 Received message:', data);
+      const newMessage: ChatMessage = {
+        id: data.id,
+        sender: data.sender,
+        content: data.content,
+        timestamp: new Date(data.timestamp),
+        type: data.messageType === 'clip_suggestion' ? 'clip_suggestion' : 
+              data.messageType === 'analysis' ? 'analysis' : 'text',
+        metadata: data.metadata
+      };
+      
+      setMessages(prev => [...prev, newMessage]);
+      setIsTyping(false);
+    };
+
+    // Handle AI typing indicator
+    const handleAITyping = (data: { isTyping: boolean }) => {
+      console.log('⌨️ AI typing status:', data.isTyping);
+      setIsTyping(data.isTyping);
+    };
+
+    // Handle errors
+    const handleError = (data: { message: string }) => {
+      console.error('❌ WebSocket error:', data.message);
+      setIsTyping(false);
+      toast({
+        title: "Error",
+        description: data.message,
+        variant: "destructive",
+      });
+    };
+
+    // Handle clip creation success
+    const handleClipCreated = (data: { clipId: string; createdClipId: string; title: string; success: boolean }) => {
+      console.log('🎬 Clip created successfully:', data);
+      toast({
+        title: "Clip Created",
+        description: `Successfully created "${data.title}"`,
+      });
+    };
+
+    // Handle clip creation errors
+    const handleClipCreationError = (data: { clipId: string; error: string }) => {
+      console.error('❌ Clip creation failed:', data);
+      toast({
+        title: "Clip Creation Failed",
+        description: data.error,
+        variant: "destructive",
+      });
+    };
+
+    // Register event listeners
+    socket.on('authenticated', handleAuthenticated);
+    socket.on('session_joined', handleSessionJoined);
+    socket.on('message_received', handleMessageReceived);
+    socket.on('ai_typing', handleAITyping);
+    socket.on('error', handleError);
+    socket.on('clip_created', handleClipCreated);
+    socket.on('clip_creation_error', handleClipCreationError);
+
+    // Cleanup on unmount
+    return () => {
+      socket.off('authenticated', handleAuthenticated);
+      socket.off('session_joined', handleSessionJoined);
+      socket.off('message_received', handleMessageReceived);
+      socket.off('ai_typing', handleAITyping);
+      socket.off('error', handleError);
+      socket.off('clip_created', handleClipCreated);
+      socket.off('clip_creation_error', handleClipCreationError);
+    };
+  }, [socket, connected, user, toast]);
+
+  // Join session when video is selected and socket is authenticated
+  useEffect(() => {
+    if (!socket || !connected || !selectedVideo || !user) return;
+
+    const tryJoin = () => {
+      console.log('🎥 Joining session for video:', selectedVideo.id);
+      socket.emit('join_session', { videoId: selectedVideo.id });
+      // Clear messages when switching videos
+      setMessages([]);
+      setCurrentSessionId(null);
+    };
+
+    // If the server already acknowledged auth in this lifecycle, we can join immediately
+    // Otherwise, wait for the 'authenticated' acknowledgment then join once
+    let joined = false;
+    const onAuthenticated = (data: { success: boolean }) => {
+      if (data.success && !joined) {
+        joined = true;
+        tryJoin();
+        socket.off('authenticated', onAuthenticated);
+      }
+    };
+
+    socket.on('authenticated', onAuthenticated);
+
+    // Fire a delayed join attempt as a fallback (in case authenticated already fired)
+    const t = setTimeout(() => {
+      if (!joined) {
+        tryJoin();
+        socket.off('authenticated', onAuthenticated);
+      }
+    }, 150);
+
+    return () => {
+      clearTimeout(t);
+      socket.off('authenticated', onAuthenticated);
+    };
+  }, [socket, connected, selectedVideo, user]);
+
   // Initialize conversation with welcome message
   useEffect(() => {
-    if (selectedVideo && messages.length === 0) {
+    if (selectedVideo && messages.length === 0 && currentSessionId) {
       const welcomeMessage: ChatMessage = {
         id: 'welcome',
         sender: 'ai',
@@ -132,10 +288,10 @@ export default function AIDashboard() {
       };
       setMessages([welcomeMessage]);
     }
-  }, [selectedVideo]);
+  }, [selectedVideo, currentSessionId]);
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || !selectedVideo) return;
+    if (!inputMessage.trim() || !selectedVideo || !currentSessionId || !socket || !connected) return;
 
     if (!hasOpenRouterKey) {
       toast({
@@ -147,132 +303,40 @@ export default function AIDashboard() {
       return;
     }
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      sender: 'user',
-      content: inputMessage,
-      timestamp: new Date(),
-      type: 'text',
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const messageContent = inputMessage.trim();
     setInputMessage("");
     setIsTyping(true);
 
     try {
-      // TODO: Replace with actual AI API call
-      // Simulate AI response for now
-      setTimeout(() => {
-        const aiResponse = generateMockResponse(inputMessage, selectedVideo);
-        setMessages(prev => [...prev, aiResponse]);
-        setIsTyping(false);
-      }, 2000);
+      console.log('📤 Sending chat message:', {
+        sessionId: currentSessionId,
+        content: messageContent,
+        videoId: selectedVideo.id
+      });
+
+      // Send message via WebSocket
+      socket.emit('chat_message', {
+        sessionId: currentSessionId,
+        content: messageContent,
+        videoId: selectedVideo.id
+      });
 
     } catch (error) {
+      console.error('❌ Failed to send message:', error);
       setIsTyping(false);
       toast({
         title: "Error",
-        description: "Failed to process your message. Please try again.",
+        description: "Failed to send your message. Please try again.",
         variant: "destructive",
       });
     }
   };
 
-  const generateMockResponse = (userMessage: string, video: VideoType): ChatMessage => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes('viral') || lowerMessage.includes('clip') || lowerMessage.includes('tiktok') || lowerMessage.includes('social')) {
-      return {
-        id: Date.now().toString(),
-        sender: 'ai',
-        content: `I'll analyze "${video.filename}" for viral moments! Let me find the most engaging clips...
-
-I found 3 potential viral clips:
-
-🔥 **"The Game-Changing Moment"** (12:30 - 13:15)
-Confidence: 95% | Perfect for TikTok
-*This segment has high emotional impact and clear takeaway*
-
-⚡ **"Surprising Revelation"** (25:45 - 26:30) 
-Confidence: 88% | Great for YouTube Shorts
-*Unexpected insight that will hook viewers*
-
-💡 **"Key Insight Explained"** (41:20 - 42:00)
-Confidence: 82% | Ideal for LinkedIn
-*Professional content with practical value*
-
-Would you like me to create these clips for you?`,
-        timestamp: new Date(),
-        type: 'clip_suggestion',
-        metadata: {
-          clips: [
-            { title: "The Game-Changing Moment", startTime: 750, endTime: 795, confidence: 95, platform: "TikTok" },
-            { title: "Surprising Revelation", startTime: 1545, endTime: 1590, confidence: 88, platform: "YouTube" },
-            { title: "Key Insight Explained", startTime: 2480, endTime: 2520, confidence: 82, platform: "LinkedIn" }
-          ]
-        }
-      };
-    }
-
-    if (lowerMessage.includes('about') || lowerMessage.includes('summary') || lowerMessage.includes('topics')) {
-      return {
-        id: Date.now().toString(),
-        sender: 'ai',
-        content: `Based on "${video.filename}", here's what I can tell you:
-
-**Duration**: ${Math.floor(video.duration / 60)} minutes
-
-**Main Topics Covered**:
-• Introduction and overview (0:00 - 5:00)
-• Core concepts and methodology (5:00 - 20:00) 
-• Real-world examples and case studies (20:00 - 35:00)
-• Advanced techniques (35:00 - 45:00)
-• Q&A and wrap-up (45:00 - end)
-
-**Key Speakers**: Based on the audio patterns, there appear to be 2-3 distinct voices
-
-**Content Style**: Professional/Educational with conversational elements
-
-Would you like me to dive deeper into any specific section or topic?`,
-        timestamp: new Date(),
-        type: 'analysis'
-      };
-    }
-
-    if (lowerMessage.includes('find') || lowerMessage.includes('where') || lowerMessage.includes('when')) {
-      return {
-        id: Date.now().toString(),
-        sender: 'ai',
-        content: `I can search through the entire transcript of "${video.filename}" for you! 
-
-What specific topic, keyword, or phrase would you like me to find? For example:
-• "Find where they discuss pricing"
-• "When do they mention AI or automation?"  
-• "Find the funniest moments"
-• "Where do they talk about challenges?"
-
-Just tell me what you're looking for and I'll locate those exact moments with timestamps!`,
-        timestamp: new Date(),
-        type: 'text'
-      };
-    }
-
-    // Default response
-    return {
-      id: Date.now().toString(),
-      sender: 'ai',
-      content: `I understand you're asking about "${video.filename}". I can help you with:
-
-💬 **Ask questions** about the content
-🔍 **Find specific topics** or keywords  
-✨ **Create viral clips** for social media
-📊 **Analyze and summarize** the content
-⏰ **Navigate to specific moments** by time
-
-What would you like to explore first?`,
-      timestamp: new Date(),
-      type: 'text'
-    };
+  // Connection status display
+  const getConnectionStatus = () => {
+    if (!connected) return { status: 'Disconnected', color: 'red' };
+    if (!currentSessionId) return { status: 'Connecting...', color: 'yellow' };
+    return { status: 'Connected', color: 'green' };
   };
 
   const handleStarterClick = (starter: string) => {
@@ -547,11 +611,24 @@ What would you like to explore first?`,
                                 size="sm"
                                 className="w-full justify-start"
                                 onClick={() => {
+                                  if (!socket || !connected) {
+                                    toast({
+                                      title: "Connection Error",
+                                      description: "WebSocket not connected. Please refresh and try again.",
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
+                                  
                                   toast({
                                     title: "Creating Clip",
                                     description: `Creating "${clip.title}" clip...`,
                                   });
-                                  // TODO: Implement actual clip creation
+                                  
+                                  // Send clip creation request via WebSocket
+                                  socket.emit('create_clips', {
+                                    clipIds: [clip.id]
+                                  });
                                 }}
                               >
                                 <Play className="h-4 w-4 mr-2" />

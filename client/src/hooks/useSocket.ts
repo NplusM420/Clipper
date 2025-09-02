@@ -12,12 +12,32 @@ export function useSocket(): UseSocketReturn {
   const [connected, setConnected] = useState(false);
   const [latestProgress, setLatestProgress] = useState<ProgressEvent | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    // Create socket connection
-    const socket = io(window.location.origin, {
+    // React 18 StrictMode protection - prevent double initialization
+    if (initializedRef.current) {
+      return;
+    }
+    initializedRef.current = true;
+
+    // Create socket connection with explicit URL handling
+    const getSocketUrl = () => {
+      // In development, ensure we're connecting to the right port
+      if (import.meta.env.DEV) {
+        return 'http://localhost:5000';
+      }
+      // In production, use the current origin
+      return window.location.origin;
+    };
+
+    const socketUrl = getSocketUrl();
+    console.log('🔌 Connecting WebSocket to:', socketUrl);
+    
+    const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       timeout: 10000,
+      autoConnect: true,
     });
 
     socketRef.current = socket;
@@ -59,10 +79,14 @@ export function useSocket(): UseSocketReturn {
       setLatestProgress(progressEvent);
     });
 
-    // Cleanup on unmount
+    // React 18 StrictMode compatible cleanup
     return () => {
-      console.log('🧹 Cleaning up socket connection');
-      socket.disconnect();
+      // Only disconnect if the socket is actually connected
+      if (socket && socket.connected) {
+        console.log('🧹 Cleaning up socket connection');
+        socket.disconnect();
+      }
+      initializedRef.current = false;
     };
   }, []);
 

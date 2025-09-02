@@ -113,12 +113,25 @@ router.get('/system/setup', async (req, res) => {
 router.get('/user/openrouter-settings', isAuthenticated, async (req, res) => {
   try {
     const userId = req.user!.id;
-    const settings = await openRouterService.getUserSettings(userId);
+    console.log(`🔍 [OpenRouter Settings] Loading settings for user: ${userId}`);
     
-    if (!settings) {
+    const settings = await openRouterService.getUserSettings(userId);
+    console.log(`🔍 [OpenRouter Settings] Settings result:`, {
+      found: !!settings,
+      apiKeyLength: settings?.apiKey?.length,
+      apiKeyStart: settings?.apiKey?.substring(0, 7)
+    });
+    
+    if (!settings || !settings.apiKey || settings.apiKey.length < 10) {
+      console.log(`❌ [OpenRouter Settings] No valid settings found`);
       return res.json({ configured: false });
     }
 
+    console.log(`✅ [OpenRouter Settings] Valid settings found`);
+    // Prevent intermediaries/browsers from caching credential status
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.json({ 
       configured: true,
       apiKey: '***' + settings.apiKey.slice(-4) // Only show last 4 characters
@@ -174,6 +187,10 @@ router.get('/user/cloudinary-settings', isAuthenticated, async (req, res) => {
     }
 
     console.log('Returning configured Cloudinary settings');
+    // Prevent cache for credential status
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.json({ 
       configured: true,
       cloudName: '***' + settings.cloudName.slice(-4), // Only show last 4 characters

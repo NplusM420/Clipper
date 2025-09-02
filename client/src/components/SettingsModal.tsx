@@ -9,6 +9,7 @@ import { Settings, Key, Eye, EyeOff, TestTube, CheckCircle, XCircle, Brain, Zap 
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { queryClient } from "@/lib/queryClient";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -84,7 +85,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     const loadOpenRouterSettings = async () => {
       try {
-        const response = await apiRequest("GET", "/api/chat/user/openrouter-settings") as any;
+        const res = await fetch("/api/chat/user/openrouter-settings", {
+          credentials: "include",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) {
+          // Treat 304 or other non-2xx as not configured for safety
+          throw new Error(`Failed to load settings: ${res.status}`);
+        }
+        const response = (await res.json()) as { configured?: boolean };
         if (response?.configured) {
           setOpenRouterConfigured(true);
           // Show placeholder indicating it's configured
@@ -109,7 +119,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     const loadCloudinarySettings = async () => {
       try {
-        const response = await apiRequest("GET", "/api/chat/user/cloudinary-settings") as any;
+        const res = await fetch("/api/chat/user/cloudinary-settings", {
+          credentials: "include",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to load settings: ${res.status}`);
+        }
+        const response = (await res.json()) as { configured?: boolean };
         if (response?.configured) {
           setCloudinaryConfigured(true);
           // Keep input empty but show it as configured
@@ -249,6 +267,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
       setOpenRouterConfigured(true);
       setOpenRouterTestResult("success");
+      // Ensure any consumers (like AI Dashboard) see the updated status
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/user/openrouter-settings"] });
     } catch (error) {
       console.error("Failed to save OpenRouter settings:", error);
       toast({
@@ -287,6 +307,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         title: "Success",
         description: "OpenRouter API key is valid and working",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/user/openrouter-settings"] });
     } catch (error) {
       setOpenRouterTestResult("error");
       toast({
@@ -325,6 +346,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
       setCloudinaryConfigured(true);
       setCloudinaryTestResult("success");
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/user/cloudinary-settings"] });
     } catch (error) {
       console.error("Failed to save Cloudinary settings:", error);
       toast({

@@ -127,18 +127,41 @@ export class OpenRouterService {
 
   // Get user's OpenRouter settings
   async getUserSettings(userId: string): Promise<{ apiKey: string } | null> {
+    console.log(`🔍 [OpenRouter] Getting settings from database for user: ${userId}`);
     const settings = await db
       .select()
       .from(openRouterSettings)
       .where(eq(openRouterSettings.userId, userId))
       .limit(1);
 
+    console.log(`🔍 [OpenRouter] Database query result:`, {
+      found: settings.length > 0,
+      encryptedKeyLength: settings[0]?.apiKey?.length,
+      encryptedKeyStart: settings[0]?.apiKey?.substring(0, 20) + '...'
+    });
+
     if (settings.length === 0) {
       return null;
     }
 
-    const decryptedKey = this.decryptApiKey(settings[0].apiKey);
-    return { apiKey: decryptedKey };
+    try {
+      const decryptedKey = this.decryptApiKey(settings[0].apiKey);
+      console.log(`🔍 [OpenRouter] Decryption result:`, {
+        success: !!decryptedKey,
+        decryptedLength: decryptedKey?.length,
+        startsWithSk: decryptedKey?.startsWith('sk-or-')
+      });
+      
+      if (!decryptedKey || decryptedKey.length < 10) {
+        console.error(`❌ [OpenRouter] Invalid decrypted key`);
+        return null;
+      }
+      
+      return { apiKey: decryptedKey };
+    } catch (error) {
+      console.error(`❌ [OpenRouter] Decryption error:`, error);
+      return null;
+    }
   }
 
   // Test OpenRouter API key
@@ -169,11 +192,14 @@ export class OpenRouterService {
     try {
       // Get API key if not provided
       if (!apiKey && userId) {
+        console.log(`🔑 [OpenRouter] Getting API key for user ${userId}`);
         const settings = await this.getUserSettings(userId);
         if (!settings) {
-          throw new Error('OpenRouter API key not configured');
+          console.error(`❌ [OpenRouter] No API key configured for user ${userId}`);
+          throw new Error('OpenRouter API key not configured. Please add your API key in Settings.');
         }
         apiKey = settings.apiKey;
+        console.log(`✅ [OpenRouter] API key found for user ${userId}`);
       }
 
       if (!apiKey) {
@@ -181,11 +207,35 @@ export class OpenRouterService {
       }
 
       const model = AI_MODELS[modelType];
+      console.log(`🚀 [OpenRouter] Making API call to model ${model.name} (${model.id})`);
       
       const messages = [
         ...conversationHistory,
         { role: 'user', content: userMessage }
       ];
+
+      console.log(`📊 [OpenRouter] Request details:`, {
+        model: model.id,
+        messagesCount: messages.length,
+        userMessageLength: userMessage.length
+      });
+
+      const requestBody = {
+        model: model.id,
+        messages,
+        max_tokens: 4096,
+        temperature: 0.7,
+      };
+
+      console.log(`🌐 [OpenRouter] === MAKING API CALL ===`);
+      console.log(`🌐 [OpenRouter] URL: ${this.baseUrl}`);
+      console.log(`🌐 [OpenRouter] Headers:`, {
+        'Authorization': `Bearer ${apiKey.substring(0, 10)}...${apiKey.slice(-4)}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.BASE_URL || 'http://localhost:5000',
+        'X-Title': 'Video Clipper AI Assistant'
+      });
+      console.log(`🌐 [OpenRouter] Request body:`, JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(this.baseUrl, {
         method: 'POST',
@@ -195,20 +245,35 @@ export class OpenRouterService {
           'HTTP-Referer': process.env.BASE_URL || 'http://localhost:5000',
           'X-Title': 'Video Clipper AI Assistant',
         },
-        body: JSON.stringify({
-          model: model.id,
-          messages,
-          max_tokens: 4096,
-          temperature: 0.7,
-        }),
+        body: JSON.stringify(requestBody),
       });
+
+      console.log(`🌐 [OpenRouter] Response status: ${response.status} ${response.statusText}`);
+      console.log(`🌐 [OpenRouter] Response headers:`, Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ [OpenRouter] API error details:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          url: this.baseUrl,
+          model: model.id,
+          apiKeyPrefix: apiKey?.substring(0, 10)
+        });
         throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
       }
 
       const data: OpenRouterResponse = await response.json();
+      console.log(`✅ [OpenRouter] API response received successfully:`, {
+        choices: data.choices?.length,
+        totalTokens: data.usage?.total_tokens,
+        promptTokens: data.usage?.prompt_tokens,
+        completionTokens: data.usage?.completion_tokens,
+        model: data.model,
+        finishReason: data.choices?.[0]?.finish_reason
+      });
+      console.log(`✅ [OpenRouter] Response content preview:`, data.choices?.[0]?.message?.content?.substring(0, 200) + '...');
       const processingTime = Date.now() - startTime;
 
       if (!data.choices || data.choices.length === 0) {
@@ -252,7 +317,26 @@ export class OpenRouterService {
     modelCalls: Array<{ model: ModelType; result: ModelCallResult }>;
     intent: string;
   }> {
+    console.log(`🚀 [OpenRouter] === STARTING CONVERSATIONAL REQUEST ===`);
+    console.log(`📝 [OpenRouter] User Message: "${userMessage}"`);
+    console.log(`👤 [OpenRouter] User ID: ${userId}`);
+    console.log(`📄 [OpenRouter] Transcript Length: ${transcriptContent.length} characters`);
+    console.log(`💬 [OpenRouter] Conversation History Length: ${conversationHistory.length} messages`);
+    
     const modelCalls: Array<{ model: ModelType; result: ModelCallResult }> = [];
+    
+    // First, verify user has API key configured
+    console.log(`🔑 [OpenRouter] Checking API key configuration for user ${userId}...`);
+    const userSettings = await this.getUserSettings(userId);
+    if (!userSettings || !userSettings.apiKey) {
+      console.error(`❌ [OpenRouter] No API key found for user ${userId}`);
+      return {
+        response: "Please configure your OpenRouter API key in Settings to use AI features. I can't process your request without valid API credentials.",
+        modelCalls: [],
+        intent: 'NO_API_KEY',
+      };
+    }
+    console.log(`✅ [OpenRouter] API key confirmed for user ${userId} (length: ${userSettings.apiKey.length})`);
     
     // Step 1: Analyze intent with Small model (Coordinator)
     const intentPrompt = `You are the Intent Analysis Coordinator for a professional video clipping platform. Your role is to analyze user requests and route them to the appropriate specialist AI models.
@@ -274,24 +358,45 @@ Reasoning: [Brief explanation of why this intent was chosen]
 
 Analyze the user's request and respond with the appropriate classification.`;
 
+    console.log(`🧠 [OpenRouter] === STEP 1: INTENT ANALYSIS ===`);
+    console.log(`🧠 [OpenRouter] Starting intent analysis for user ${userId}`);
+    console.log(`🧠 [OpenRouter] Intent prompt length: ${intentPrompt.length} characters`);
+    
     const intentResult = await this.callModel('SMALL', intentPrompt, [], undefined, userId);
     modelCalls.push({ model: 'SMALL', result: intentResult });
 
+    console.log(`🧠 [OpenRouter] Intent analysis completed:`, {
+      success: intentResult.success,
+      model: intentResult.model,
+      tokensUsed: intentResult.tokensUsed,
+      costCents: intentResult.costCents,
+      processingTimeMs: intentResult.processingTimeMs,
+      contentLength: intentResult.content?.length,
+      error: intentResult.error
+    });
+
     if (!intentResult.success) {
+      console.error(`❌ [OpenRouter] Intent analysis FAILED with error:`, intentResult.error);
       return {
-        response: "I'm having trouble processing your request. Please try again.",
+        response: `I'm having trouble connecting to the AI service. Error: ${intentResult.error}. Please check your OpenRouter API key in settings and try again.`,
         modelCalls,
         intent: 'ERROR',
       };
     }
 
+    console.log(`🧠 [OpenRouter] Intent analysis response content:`, intentResult.content?.substring(0, 200) + '...');
     const intent = this.extractIntent(intentResult.content);
+    console.log(`🧠 [OpenRouter] Extracted intent: ${intent}`);
 
     // Step 2: Route to appropriate specialist model if needed
     let finalResponse = '';
 
+    console.log(`🎯 [OpenRouter] === STEP 2: ROUTING TO SPECIALIST ===`);
+    
     switch (intent) {
       case 'CLIP_REQUEST':
+        console.log(`🎬 [OpenRouter] CLIP_REQUEST detected - routing to Medium model for clip analysis`);
+        
         // Call Medium model for clip analysis
         const clipPrompt = `You are the Clip Analysis Specialist for a professional video content platform. Your expertise is identifying viral moments and creating optimized social media clips.
 
@@ -324,8 +429,30 @@ SELECTION CRITERIA:
 
 Analyze the transcript and provide viral clip recommendations with precise timestamps.`;
 
+        console.log(`🎬 [OpenRouter] Starting clip analysis for user ${userId}`);
+        console.log(`🎬 [OpenRouter] Clip prompt length: ${clipPrompt.length} characters`);
+        console.log(`🎬 [OpenRouter] Transcript excerpt: "${transcriptContent.substring(0, 100)}..."`);
+        
         const clipResult = await this.callModel('MEDIUM', clipPrompt, [], undefined, userId);
         modelCalls.push({ model: 'MEDIUM', result: clipResult });
+        
+        console.log(`🎬 [OpenRouter] Clip analysis COMPLETED:`, {
+          success: clipResult.success,
+          model: clipResult.model,
+          tokensUsed: clipResult.tokensUsed,
+          costCents: clipResult.costCents,
+          contentLength: clipResult.content?.length,
+          processingTimeMs: clipResult.processingTimeMs,
+          error: clipResult.error
+        });
+
+        if (!clipResult.success) {
+          console.error(`❌ [OpenRouter] Clip analysis FAILED:`, clipResult.error);
+          finalResponse = `I couldn't analyze your video for clips right now. Error: ${clipResult.error}. Please check your OpenRouter API key and try again.`;
+          break;
+        }
+
+        console.log(`🎬 [OpenRouter] Clip analysis response preview:`, clipResult.content?.substring(0, 300) + '...');
 
         // Small model formats the response conversationally
         const formatPrompt = `You are the User Interface Coordinator. Transform this technical clip analysis into a friendly, professional response for our video clipping platform users.
@@ -352,10 +479,20 @@ STYLE: Clear, actionable, enthusiastic about their content's potential
 
 Transform the analysis into a user-friendly response.`;
 
+        console.log(`🎨 [OpenRouter] Starting response formatting with Small model`);
         const formatResult = await this.callModel('SMALL', formatPrompt, conversationHistory, undefined, userId);
         modelCalls.push({ model: 'SMALL', result: formatResult });
 
+        console.log(`🎨 [OpenRouter] Response formatting result:`, {
+          success: formatResult.success,
+          model: formatResult.model,
+          tokensUsed: formatResult.tokensUsed,
+          contentLength: formatResult.content?.length,
+          error: formatResult.error
+        });
+
         finalResponse = formatResult.success ? formatResult.content : clipResult.content;
+        console.log(`🎬 [OpenRouter] Final clip response length: ${finalResponse.length} characters`);
         break;
 
       case 'DEEP_ANALYSIS':
@@ -470,6 +607,19 @@ Be conversational, specific, and always reference the actual video content when 
         finalResponse = directResult.success ? directResult.content : "I couldn't process that request. Please try again.";
         break;
     }
+
+    console.log(`🏁 [OpenRouter] === PROCESS COMPLETE ===`);
+    console.log(`🏁 [OpenRouter] Final response length: ${finalResponse.length} characters`);
+    console.log(`🏁 [OpenRouter] Total model calls made: ${modelCalls.length}`);
+    console.log(`🏁 [OpenRouter] Final intent: ${intent}`);
+    console.log(`🏁 [OpenRouter] Model call summary:`, modelCalls.map(call => ({
+      model: call.model,
+      success: call.result.success,
+      tokens: call.result.tokensUsed,
+      cost: call.result.costCents,
+      error: call.result.error
+    })));
+    console.log(`🏁 [OpenRouter] Final response preview: "${finalResponse.substring(0, 200)}..."`);
 
     return {
       response: finalResponse,

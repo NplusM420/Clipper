@@ -281,13 +281,28 @@ export class WebSocketService {
       
       socket.to(`session_${sessionId}`).emit('ai_typing', { isTyping: false });
 
+      // Get more specific error message
+      let errorContent = "I'm having trouble processing that request. Please try again.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('OpenRouter API key not configured')) {
+          errorContent = "Please configure your OpenRouter API key in Settings to use AI features.";
+        } else if (error.message.includes('OpenRouter API error')) {
+          errorContent = `API Error: ${error.message}. Please check your OpenRouter API key and try again.`;
+        } else if (error.message.includes('No API key provided')) {
+          errorContent = "OpenRouter API key is missing. Please add your API key in Settings.";
+        } else {
+          errorContent = `Error: ${error.message}`;
+        }
+      }
+
       // Send error response
       const [errorMessage] = await db
         .insert(chatMessages)
         .values({
           sessionId,
           sender: 'ai',
-          content: "I'm having trouble processing that request. Please try again or check your OpenRouter API key configuration.",
+          content: errorContent,
           messageType: 'text',
         })
         .returning();

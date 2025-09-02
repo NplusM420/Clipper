@@ -43,7 +43,10 @@
       "Bash(cd:*)",
       "Bash(cd:*)",
       "Bash(cd:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(pkill:*)",
+      "Bash(fuser:*)",
+      "Bash(timeout 15s npm run dev)"
     ],
     "additionalDirectories": [
       "/mnt/d/Clients"
