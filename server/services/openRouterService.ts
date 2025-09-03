@@ -629,18 +629,25 @@ Be conversational, specific, and always reference the actual video content when 
   }
 
   private extractIntent(response: string): string {
+    // Look for exact intent format: "Intent: [INTENT_TYPE]"
+    const intentMatch = response.match(/Intent:\s*([A-Z_]+)/i);
+    if (intentMatch) {
+      return intentMatch[1].toUpperCase();
+    }
+    
+    // Fallback to the old method if no structured format found
     const upperResponse = response.toUpperCase();
     
-    if (upperResponse.includes('CLIP_REQUEST') || upperResponse.includes('CLIP')) {
+    if (upperResponse.includes('CLIP_REQUEST')) {
       return 'CLIP_REQUEST';
     }
-    if (upperResponse.includes('DEEP_ANALYSIS') || upperResponse.includes('ANALYSIS')) {
+    if (upperResponse.includes('DEEP_ANALYSIS')) {
       return 'DEEP_ANALYSIS';
     }
-    if (upperResponse.includes('KEYWORD_SEARCH') || upperResponse.includes('SEARCH')) {
+    if (upperResponse.includes('KEYWORD_SEARCH')) {
       return 'KEYWORD_SEARCH';
     }
-    if (upperResponse.includes('CONTENT_QUESTION') || upperResponse.includes('QUESTION')) {
+    if (upperResponse.includes('CONTENT_QUESTION')) {
       return 'CONTENT_QUESTION';
     }
     

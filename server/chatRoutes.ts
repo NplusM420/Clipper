@@ -238,12 +238,14 @@ router.post('/user/cloudinary-settings', isAuthenticated, async (req, res) => {
   }
 });
 
-// Get chat sessions for user
-router.get('/chat/sessions', isAuthenticated, async (req, res) => {
+// Get chat sessions for user (with enhanced details)
+router.get('/sessions', isAuthenticated, async (req, res) => {
   try {
     const userId = req.user!.id;
+    const { videoId } = req.query;
     
-    const sessions = await db
+    // Base query for sessions
+    let sessionQuery = db
       .select({
         id: chatSessions.id,
         videoId: chatSessions.videoId,
@@ -252,10 +254,69 @@ router.get('/chat/sessions', isAuthenticated, async (req, res) => {
         updatedAt: chatSessions.updatedAt,
       })
       .from(chatSessions)
-      .where(eq(chatSessions.userId, userId))
-      .orderBy(desc(chatSessions.updatedAt));
+      .where(eq(chatSessions.userId, userId));
 
-    res.json(sessions);
+    // Filter by videoId if provided
+    if (videoId) {
+      sessionQuery = sessionQuery.where(
+        and(
+          eq(chatSessions.userId, userId),
+          eq(chatSessions.videoId, videoId as string)
+        )
+      );
+    }
+
+    const sessions = await sessionQuery.orderBy(desc(chatSessions.updatedAt));
+
+    // Enhance sessions with additional details
+    const enhancedSessions = await Promise.all(
+      sessions.map(async (session) => {
+        // Get message count
+        const [messageCount] = await db
+          .select({ count: count() })
+          .from(chatMessages)
+          .where(eq(chatMessages.sessionId, session.id));
+
+        // Check if session has clip suggestions
+        const [clipSuggestionsCount] = await db
+          .select({ count: count() })
+          .from(chatMessages)
+          .where(
+            and(
+              eq(chatMessages.sessionId, session.id),
+              eq(chatMessages.messageType, 'clip_suggestion')
+            )
+          );
+
+        // Get video name (assuming we have a videos table)
+        let videoName = session.title || 'Chat Session';
+        try {
+          // Try to get video filename from videos table
+          const videoResult = await db.execute(`
+            SELECT filename FROM videos WHERE id = $1 LIMIT 1
+          `, [session.videoId]);
+          
+          if (videoResult.rows && videoResult.rows.length > 0) {
+            videoName = videoResult.rows[0].filename || videoName;
+          }
+        } catch (videoError) {
+          console.log('Could not fetch video name:', videoError);
+        }
+
+        return {
+          id: session.id,
+          videoId: session.videoId,
+          videoName,
+          lastActivity: session.updatedAt,
+          messageCount: messageCount.count || 0,
+          hasClipSuggestions: (clipSuggestionsCount.count || 0) > 0,
+          title: session.title,
+          createdAt: session.createdAt,
+        };
+      })
+    );
+
+    res.json(enhancedSessions);
   } catch (error) {
     console.error('Error getting chat sessions:', error);
     res.status(500).json({ error: 'Failed to get sessions' });
@@ -326,7 +387,7 @@ router.get('/chat/session/:sessionId/messages', isAuthenticated, async (req, res
   }
 });
 
-// Delete a chat session
+// Delete a chat session (legacy route)
 router.delete('/chat/session/:sessionId', isAuthenticated, async (req, res) => {
   try {
     const userId = req.user!.id;
@@ -352,6 +413,52 @@ router.delete('/chat/session/:sessionId', isAuthenticated, async (req, res) => {
       .where(eq(chatSessions.id, sessionId));
 
     res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting chat session:', error);
+    res.status(500).json({ error: 'Failed to delete session' });
+  }
+});
+
+// Delete a chat session (new route matching frontend expectation)
+router.delete('/sessions/:sessionId', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { sessionId } = req.params;
+
+    console.log(`🗑️ [ChatRoutes] Deleting session ${sessionId} for user ${userId}`);
+
+    // Verify user owns this session
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(and(
+        eq(chatSessions.id, sessionId),
+        eq(chatSessions.userId, userId)
+      ))
+      .limit(1);
+
+    if (!session) {
+      console.log(`❌ [ChatRoutes] Session ${sessionId} not found or not owned by user ${userId}`);
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Delete related AI discovered clips first
+    await db
+      .delete(aiDiscoveredClips)
+      .where(eq(aiDiscoveredClips.sessionId, sessionId));
+
+    // Delete chat messages
+    await db
+      .delete(chatMessages)
+      .where(eq(chatMessages.sessionId, sessionId));
+
+    // Delete the session itself
+    await db
+      .delete(chatSessions)
+      .where(eq(chatSessions.id, sessionId));
+
+    console.log(`✅ [ChatRoutes] Successfully deleted session ${sessionId}`);
+    res.json({ success: true, message: 'Session deleted successfully' });
   } catch (error) {
     console.error('Error deleting chat session:', error);
     res.status(500).json({ error: 'Failed to delete session' });

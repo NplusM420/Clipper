@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +25,10 @@ import {
   Sparkles,
   Clock,
   Play,
+  Check,
+  ChevronDown,
+  History,
+  Trash2,
 } from "lucide-react";
 import type { Video as VideoType } from "@shared/schema";
 
@@ -91,6 +96,30 @@ export default function AIDashboard() {
   const [isTyping, setIsTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [creatingClips, setCreatingClips] = useState<Set<string>>(new Set());
+  const [createdClips, setCreatedClips] = useState<Set<string>>(new Set());
+
+  // Chat history management
+  interface ChatSession {
+    id: string;
+    videoId: string;
+    videoName: string;
+    lastActivity: Date;
+    messageCount: number;
+    hasClipSuggestions: boolean;
+  }
+
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [showChatHistory, setShowChatHistory] = useState(false);
+
+  // Content analysis state
+  const [detectedTopics, setDetectedTopics] = useState<string[]>([]);
+  const [keyMoments, setKeyMoments] = useState<Array<{
+    title: string;
+    startTime: number;
+    endTime: number;
+    confidence: number;
+  }>>([]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -117,6 +146,23 @@ export default function AIDashboard() {
   });
 
   const hasOpenRouterKey = (openRouterSettings as any)?.configured;
+
+  // Fetch chat sessions for current video
+  const { data: sessionHistory = [], refetch: refetchSessions } = useQuery({
+    queryKey: ["/api/chat/sessions", selectedVideo?.id],
+    enabled: isAuthenticated && !!selectedVideo,
+    select: (data: any[]) => data.map(session => ({
+      ...session,
+      lastActivity: new Date(session.lastActivity)
+    }))
+  });
+
+  // Update chat sessions state when data changes
+  useEffect(() => {
+    if (sessionHistory) {
+      setChatSessions(sessionHistory);
+    }
+  }, [sessionHistory]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -200,18 +246,59 @@ export default function AIDashboard() {
     // Handle clip creation success
     const handleClipCreated = (data: { clipId: string; createdClipId: string; title: string; success: boolean }) => {
       console.log('🎬 Clip created successfully:', data);
+      
+      // Remove from creating state and add to created state
+      setCreatingClips(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(data.clipId);
+        return newSet;
+      });
+      
+      setCreatedClips(prev => {
+        const newSet = new Set(prev);
+        newSet.add(data.clipId);
+        return newSet;
+      });
+      
       toast({
-        title: "Clip Created",
-        description: `Successfully created "${data.title}"`,
+        title: "Clip Created Successfully! 🎬",
+        description: `"${data.title}" has been created and is ready for download`,
       });
     };
 
     // Handle clip creation errors
     const handleClipCreationError = (data: { clipId: string; error: string }) => {
       console.error('❌ Clip creation failed:', data);
+      
+      // Remove from creating state
+      setCreatingClips(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(data.clipId);
+        return newSet;
+      });
+      
       toast({
         title: "Clip Creation Failed",
         description: data.error,
+        variant: "destructive",
+      });
+    };
+
+    // Handle clip processing completion
+    const handleClipProcessingComplete = (data: { clipId: string; createdClipId: string; title: string; status: string }) => {
+      console.log('🎬 Clip processing completed:', data);
+      toast({
+        title: "Clip Processing Complete! 🎉",
+        description: `"${data.title}" has been processed and uploaded to Cloudinary`,
+      });
+    };
+
+    // Handle clip processing errors
+    const handleClipProcessingError = (data: { clipId: string; createdClipId: string; title: string; error: string }) => {
+      console.error('❌ Clip processing failed:', data);
+      toast({
+        title: "Clip Processing Failed",
+        description: `Failed to process "${data.title}": ${data.error}`,
         variant: "destructive",
       });
     };
@@ -224,6 +311,8 @@ export default function AIDashboard() {
     socket.on('error', handleError);
     socket.on('clip_created', handleClipCreated);
     socket.on('clip_creation_error', handleClipCreationError);
+    socket.on('clip_processing_complete', handleClipProcessingComplete);
+    socket.on('clip_processing_error', handleClipProcessingError);
 
     // Cleanup on unmount
     return () => {
@@ -234,6 +323,8 @@ export default function AIDashboard() {
       socket.off('error', handleError);
       socket.off('clip_created', handleClipCreated);
       socket.off('clip_creation_error', handleClipCreationError);
+      socket.off('clip_processing_complete', handleClipProcessingComplete);
+      socket.off('clip_processing_error', handleClipProcessingError);
     };
   }, [socket, connected, user, toast]);
 
@@ -356,6 +447,167 @@ export default function AIDashboard() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Chat session management functions
+  const handleSwitchSession = async (sessionId: string) => {
+    if (!socket || !connected || !selectedVideo) return;
+    
+    try {
+      console.log('🔄 Switching to session:', sessionId);
+      
+      // Clear current messages and state
+      setMessages([]);
+      setCurrentSessionId(null);
+      setCreatingClips(new Set());
+      setCreatedClips(new Set());
+      
+      // Join the selected session
+      socket.emit('join_session', { 
+        videoId: selectedVideo.id, 
+        sessionId: sessionId 
+      });
+      
+      toast({
+        title: "Session Loaded",
+        description: "Switched to previous chat session",
+      });
+    } catch (error) {
+      console.error('Failed to switch session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load chat session",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        // Refresh sessions list
+        refetchSessions();
+        
+        // If we deleted the current session, start a new one
+        if (currentSessionId === sessionId) {
+          setMessages([]);
+          setCurrentSessionId(null);
+          if (socket && selectedVideo) {
+            socket.emit('join_session', { videoId: selectedVideo.id, newSession: true });
+          }
+        }
+        
+        toast({
+          title: "Session Deleted",
+          description: "Chat history has been removed",
+        });
+      } else {
+        throw new Error('Failed to delete session');
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete chat session",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const formatRelativeTime = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Content analysis functions
+  const extractTopicsFromMessages = (messages: ChatMessage[]): string[] => {
+    const topics = new Set<string>();
+    
+    messages.forEach(message => {
+      if (message.sender === 'ai' && message.content) {
+        const content = message.content.toLowerCase();
+        
+        // Topic detection patterns
+        const topicPatterns = {
+          'AI & Technology': /\b(ai|artificial intelligence|machine learning|technology|automation|digital|algorithms|models)\b/g,
+          'Business Strategy': /\b(business|strategy|market|revenue|growth|investment|startup|company|enterprise)\b/g,
+          'Content Creation': /\b(content|video|clips|social media|tiktok|youtube|instagram|creator|viral)\b/g,
+          'Future Trends': /\b(future|trend|innovation|emerging|next|upcoming|prediction|forecast)\b/g,
+          'Industry Insights': /\b(industry|sector|market|analysis|insights|expertise|professional|experience)\b/g,
+          'Education': /\b(learn|education|tutorial|guide|teach|explain|knowledge|understanding)\b/g,
+          'Entertainment': /\b(funny|humor|entertainment|comedy|amusing|laugh|joke|hilarious)\b/g,
+          'Health & Wellness': /\b(health|wellness|fitness|medical|mental|physical|wellbeing)\b/g,
+          'Finance': /\b(finance|money|investment|economic|financial|budget|cost|price)\b/g,
+          'Communication': /\b(communication|speaking|presentation|interview|conversation|discuss)\b/g
+        };
+
+        Object.entries(topicPatterns).forEach(([topic, pattern]) => {
+          const matches = content.match(pattern);
+          if (matches && matches.length >= 2) { // Require multiple mentions
+            topics.add(topic);
+          }
+        });
+      }
+    });
+
+    return Array.from(topics).slice(0, 6); // Limit to 6 topics
+  };
+
+  const extractKeyMomentsFromMessages = (messages: ChatMessage[]): Array<{
+    title: string;
+    startTime: number;
+    endTime: number;
+    confidence: number;
+  }> => {
+    const moments: Array<{
+      title: string;
+      startTime: number;
+      endTime: number;
+      confidence: number;
+    }> = [];
+
+    messages.forEach(message => {
+      if (message.sender === 'ai' && message.metadata?.clips) {
+        message.metadata.clips.forEach(clip => {
+          moments.push({
+            title: clip.title,
+            startTime: clip.startTime,
+            endTime: clip.endTime,
+            confidence: clip.confidence
+          });
+        });
+      }
+    });
+
+    // Sort by confidence and take top moments
+    return moments
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 5);
+  };
+
+  // Update topics and key moments when messages change
+  useEffect(() => {
+    if (messages.length > 0 && selectedVideo) {
+      const topics = extractTopicsFromMessages(messages);
+      const moments = extractKeyMomentsFromMessages(messages);
+      
+      setDetectedTopics(topics);
+      setKeyMoments(moments);
+    }
+  }, [messages, selectedVideo]);
+
   const goBackToDashboard = () => {
     window.location.href = '/';
   };
@@ -388,6 +640,100 @@ export default function AIDashboard() {
                 <MessageSquare className="h-4 w-4 mr-2" />
                 AI Assistant
               </Button>
+              {/* Chat History Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="chat-history-dropdown"
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    Chat History
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-80">
+                  {/* New Chat Option */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setMessages([]);
+                      setCurrentSessionId(null);
+                      if (socket && selectedVideo) {
+                        socket.emit('join_session', { videoId: selectedVideo.id, newSession: true });
+                      }
+                      toast({
+                        title: "New Chat Started",
+                        description: "Starting a fresh conversation about this video",
+                      });
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Start New Chat
+                  </DropdownMenuItem>
+                  
+                  {chatSessions.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Recent Sessions ({chatSessions.length})
+                      </div>
+                      {chatSessions.slice(0, 10).map((session) => (
+                        <DropdownMenuItem
+                          key={session.id}
+                          className="cursor-pointer"
+                          onClick={() => handleSwitchSession(session.id)}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center space-x-2 flex-1">
+                              <MessageSquare className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                              <div className="flex flex-col flex-1 min-w-0">
+                                <span className="text-xs font-medium truncate">
+                                  {session.videoName || 'Chat Session'}
+                                </span>
+                                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                                  <span>{session.messageCount} messages</span>
+                                  <span>•</span>
+                                  <span>{formatRelativeTime(session.lastActivity)}</span>
+                                  {session.hasClipSuggestions && (
+                                    <>
+                                      <span>•</span>
+                                      <Badge variant="secondary" className="text-xs px-1 py-0">
+                                        Clips
+                                      </Badge>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSession(session.id);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                  
+                  {chatSessions.length === 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-4 text-center text-xs text-muted-foreground">
+                        No previous chat sessions
+                      </div>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="sm"
@@ -452,40 +798,115 @@ export default function AIDashboard() {
                   </div>
                 </div>
 
-                {/* Content Topics */}
+                {/* Content Topics - Dynamic */}
                 <div className="bg-card rounded-lg p-3 border">
-                  <h4 className="font-medium text-sm mb-2">Detected Topics</h4>
+                  <h4 className="font-medium text-sm mb-2 flex items-center justify-between">
+                    <span>Detected Topics</span>
+                    {detectedTopics.length > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        {detectedTopics.length}
+                      </Badge>
+                    )}
+                  </h4>
                   <div className="space-y-1">
-                    <Badge variant="secondary" className="text-xs mr-1 mb-1">AI & Technology</Badge>
-                    <Badge variant="secondary" className="text-xs mr-1 mb-1">Business Strategy</Badge>
-                    <Badge variant="secondary" className="text-xs mr-1 mb-1">Future Trends</Badge>
-                    <Badge variant="secondary" className="text-xs mr-1 mb-1">Industry Insights</Badge>
+                    {detectedTopics.length > 0 ? (
+                      detectedTopics.map((topic, index) => (
+                        <Badge 
+                          key={index}
+                          variant="secondary" 
+                          className="text-xs mr-1 mb-1"
+                        >
+                          {topic}
+                        </Badge>
+                      ))
+                    ) : (
+                      <div className="text-xs text-muted-foreground text-center py-2">
+                        Topics will appear as you chat with the AI about this video
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Topics are automatically detected when you chat with the AI
-                  </p>
+                  {detectedTopics.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Topics detected from AI conversation analysis
+                    </p>
+                  )}
                 </div>
 
-                {/* Key Moments */}
+                {/* Key Moments - Dynamic */}
                 <div className="bg-card rounded-lg p-3 border">
-                  <h4 className="font-medium text-sm mb-2">Key Moments</h4>
+                  <h4 className="font-medium text-sm mb-2 flex items-center justify-between">
+                    <span>Key Moments</span>
+                    {keyMoments.length > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        {keyMoments.length}
+                      </Badge>
+                    )}
+                  </h4>
+                  <div className="space-y-2 text-xs max-h-48 overflow-y-auto">
+                    {keyMoments.length > 0 ? (
+                      keyMoments.map((moment, index) => (
+                        <div 
+                          key={index}
+                          className="flex items-center justify-between p-2 bg-muted/50 rounded hover:bg-muted cursor-pointer transition-colors"
+                          onClick={() => {
+                            // Future: Could implement video seeking functionality
+                            toast({
+                              title: "Key Moment",
+                              description: `"${moment.title}" at ${formatTime(moment.startTime)}`,
+                            });
+                          }}
+                        >
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <span className="truncate font-medium">{moment.title}</span>
+                            <div className="flex items-center space-x-2 mt-1">
+                              <Badge variant="secondary" className="text-xs px-1 py-0">
+                                {moment.confidence}%
+                              </Badge>
+                              <span className="text-muted-foreground">
+                                {formatTime(moment.startTime)}-{formatTime(moment.endTime)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-muted-foreground text-center py-4">
+                        Key moments will appear when AI suggests clips from this video
+                      </div>
+                    )}
+                  </div>
+                  {keyMoments.length > 0 ? (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Click moments to see details • Sorted by AI confidence
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Ask the AI to "find viral moments" or "create clips" to see key segments
+                    </p>
+                  )}
+                </div>
+
+                {/* Session Stats */}
+                <div className="bg-card rounded-lg p-3 border">
+                  <h4 className="font-medium text-sm mb-2">Session Stats</h4>
                   <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                      <span>Introduction</span>
-                      <span className="text-muted-foreground">0:00-2:30</span>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Messages:</span>
+                      <span>{messages.length}</span>
                     </div>
-                    <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                      <span>Main Topic</span>
-                      <span className="text-muted-foreground">2:30-15:45</span>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">AI Calls:</span>
+                      <span>{Math.floor(messages.length / 2)}</span>
                     </div>
-                    <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                      <span>Q&A Session</span>
-                      <span className="text-muted-foreground">15:45-{formatTime(selectedVideo.duration)}</span>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Clips Created:</span>
+                      <span>{createdClips.size}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Processing:</span>
+                      <span>{creatingClips.size}</span>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Ask the AI to find specific moments in your video
-                  </p>
                 </div>
               </div>
             ) : (
@@ -604,40 +1025,60 @@ export default function AIDashboard() {
                         
                         {message.metadata?.clips && (
                           <div className="mt-3 space-y-2">
-                            {message.metadata.clips.map((clip, index) => (
-                              <Button
-                                key={index}
-                                variant="outline"
-                                size="sm"
-                                className="w-full justify-start"
-                                onClick={() => {
-                                  if (!socket || !connected) {
+                            {message.metadata.clips.map((clip, index) => {
+                              const isCreating = creatingClips.has(clip.id);
+                              const isCreated = createdClips.has(clip.id);
+                              
+                              return (
+                                <Button
+                                  key={index}
+                                  variant={isCreated ? "default" : "outline"}
+                                  size="sm"
+                                  className={`w-full justify-start ${
+                                    isCreated ? 'bg-green-600 hover:bg-green-700 text-white' : ''
+                                  }`}
+                                  disabled={isCreating || isCreated}
+                                  onClick={() => {
+                                    if (!socket || !connected) {
+                                      toast({
+                                        title: "Connection Error",
+                                        description: "WebSocket not connected. Please refresh and try again.",
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
+                                    
+                                    // Add to creating state
+                                    setCreatingClips(prev => new Set([...prev, clip.id]));
+                                    
                                     toast({
-                                      title: "Connection Error",
-                                      description: "WebSocket not connected. Please refresh and try again.",
-                                      variant: "destructive",
+                                      title: "Creating Clip",
+                                      description: `Processing "${clip.title}" - this may take a few moments...`,
                                     });
-                                    return;
-                                  }
+                                    
+                                    // Send clip creation request via WebSocket
+                                    socket.emit('create_clips', {
+                                      clipIds: [clip.id]
+                                    });
+                                  }}
+                                >
+                                  {isCreating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                                  {isCreated && <Check className="h-4 w-4 mr-2" />}
+                                  {!isCreating && !isCreated && <Play className="h-4 w-4 mr-2" />}
                                   
-                                  toast({
-                                    title: "Creating Clip",
-                                    description: `Creating "${clip.title}" clip...`,
-                                  });
+                                  {isCreating && "Creating..."}
+                                  {isCreated && "Created!"}
+                                  {!isCreating && !isCreated && `Create "${clip.title}"`}
                                   
-                                  // Send clip creation request via WebSocket
-                                  socket.emit('create_clips', {
-                                    clipIds: [clip.id]
-                                  });
-                                }}
-                              >
-                                <Play className="h-4 w-4 mr-2" />
-                                Create "{clip.title}"
-                                <Badge variant="secondary" className="ml-auto">
-                                  {formatTime(clip.startTime)}-{formatTime(clip.endTime)}
-                                </Badge>
-                              </Button>
-                            ))}
+                                  <Badge 
+                                    variant={isCreated ? "outline" : "secondary"} 
+                                    className={`ml-auto ${isCreated ? 'border-white text-white' : ''}`}
+                                  >
+                                    {formatTime(clip.startTime)}-{formatTime(clip.endTime)}
+                                  </Badge>
+                                </Button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -653,7 +1094,10 @@ export default function AIDashboard() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">
-                          Analyzing your request...
+                          Analyzing video content... (~30 seconds)
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Using advanced AI models for deep analysis
                         </div>
                       </div>
                     </div>
@@ -788,13 +1232,100 @@ export default function AIDashboard() {
                 </p>
               </div>
 
-              {/* Pending Clips */}
+              {/* Suggested Clips - Dynamic */}
               <div className="bg-card rounded-lg p-3 border">
-                <h4 className="font-medium text-sm mb-2">Suggested Clips</h4>
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground text-center py-4">
-                    Ask the AI to "create viral clips" to see suggestions here
-                  </div>
+                <h4 className="font-medium text-sm mb-2 flex items-center space-x-2">
+                  <Sparkles className="h-4 w-4 text-green-500" />
+                  <span>Suggested Clips</span>
+                  {(() => {
+                    const allClips = messages
+                      .filter(msg => msg.metadata?.clips)
+                      .flatMap(msg => msg.metadata.clips);
+                    return allClips.length > 0 && (
+                      <Badge variant="secondary" className="text-xs ml-auto">
+                        {allClips.length}
+                      </Badge>
+                    );
+                  })()}
+                </h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {(() => {
+                    const allClips = messages
+                      .filter(msg => msg.metadata?.clips)
+                      .flatMap(msg => msg.metadata.clips);
+                    
+                    return allClips.length > 0 ? (
+                      allClips.map((clip, index) => {
+                        const isCreating = creatingClips.has(clip.id);
+                        const isCreated = createdClips.has(clip.id);
+                        
+                        return (
+                          <Button
+                            key={`sidebar-${clip.id}-${index}`}
+                            variant={isCreated ? "default" : "outline"}
+                            size="sm"
+                            className={`w-full justify-start text-xs p-2 h-auto ${
+                              isCreated ? 'bg-green-600 hover:bg-green-700 text-white' : ''
+                            }`}
+                            disabled={isCreating || isCreated}
+                            onClick={() => {
+                              if (!socket || !connected) {
+                                toast({
+                                  title: "Connection Error",
+                                  description: "WebSocket not connected. Please refresh and try again.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              
+                              setCreatingClips(prev => new Set([...prev, clip.id]));
+                              
+                              toast({
+                                title: "Creating Clip",
+                                description: `Processing "${clip.title}" - this may take a few moments...`,
+                              });
+                              
+                              socket.emit('create_clips', {
+                                clipIds: [clip.id]
+                              });
+                            }}
+                          >
+                            <div className="flex flex-col items-start w-full">
+                              <div className="flex items-center w-full">
+                                {isCreating && <Loader2 className="h-3 w-3 mr-2 animate-spin flex-shrink-0" />}
+                                {isCreated && <Check className="h-3 w-3 mr-2 flex-shrink-0" />}
+                                {!isCreating && !isCreated && <Play className="h-3 w-3 mr-2 flex-shrink-0" />}
+                                
+                                <span className="truncate flex-1">
+                                  {isCreating && "Creating..."}
+                                  {isCreated && "Created!"}
+                                  {!isCreating && !isCreated && clip.title}
+                                </span>
+                              </div>
+                              <div className="flex justify-between w-full mt-1">
+                                <Badge 
+                                  variant={isCreated ? "outline" : "secondary"} 
+                                  className={`text-xs ${isCreated ? 'border-white text-white' : ''}`}
+                                >
+                                  {formatTime(clip.startTime)}-{formatTime(clip.endTime)}
+                                </Badge>
+                                <Badge 
+                                  variant="secondary" 
+                                  className={`text-xs ml-1 ${isCreated ? 'bg-green-100 text-green-800' : ''}`}
+                                >
+                                  {clip.confidence}%
+                                </Badge>
+                              </div>
+                            </div>
+                          </Button>
+                        );
+                      })
+                    ) : (
+                      <div className="text-xs text-muted-foreground text-center py-6">
+                        Ask the AI to "create viral clips" to see suggestions here
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -832,34 +1363,58 @@ export default function AIDashboard() {
                 </div>
               </div>
 
-              {/* Recent Clips */}
+              {/* Recent Clips - Dynamic */}
               <div className="bg-card rounded-lg p-3 border">
-                <h4 className="font-medium text-sm mb-2">Recent Clips</h4>
-                <div className="space-y-2 text-xs">
-                  <div className="text-muted-foreground text-center py-4">
-                    Your created clips will appear here
-                  </div>
+                <h4 className="font-medium text-sm mb-2 flex items-center space-x-2">
+                  <Check className="h-4 w-4 text-green-500" />
+                  <span>Recent Clips</span>
+                  {createdClips.size > 0 && (
+                    <Badge variant="secondary" className="text-xs ml-auto">
+                      {createdClips.size}
+                    </Badge>
+                  )}
+                </h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {createdClips.size > 0 ? (
+                    Array.from(createdClips).map(clipId => {
+                      // Find the clip details from messages
+                      const clipDetails = messages
+                        .filter(msg => msg.metadata?.clips)
+                        .flatMap(msg => msg.metadata.clips)
+                        .find(clip => clip.id === clipId);
+                      
+                      if (!clipDetails) return null;
+                      
+                      return (
+                        <div
+                          key={`recent-${clipId}`}
+                          className="bg-muted/50 rounded-lg p-2 border"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
+                            <span className="text-xs font-medium truncate flex-1">
+                              {clipDetails.title}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {formatTime(clipDetails.startTime)}-{formatTime(clipDetails.endTime)}
+                            </Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              ✅ Ready
+                            </Badge>
+                          </div>
+                        </div>
+                      );
+                    }).filter(Boolean)
+                  ) : (
+                    <div className="text-xs text-muted-foreground text-center py-4">
+                      Your created clips will appear here
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Usage Stats */}
-              <div className="bg-card rounded-lg p-3 border">
-                <h4 className="font-medium text-sm mb-2">Session Stats</h4>
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Messages:</span>
-                    <span>{messages.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">AI Calls:</span>
-                    <span>{Math.floor(messages.length / 2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Clips Created:</span>
-                    <span>0</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </ScrollArea>
         </div>

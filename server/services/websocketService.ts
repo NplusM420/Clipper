@@ -4,6 +4,7 @@ import { chatSessions, chatMessages, aiModelCalls, aiDiscoveredClips, clips } fr
 import { eq, and, desc } from 'drizzle-orm';
 import { openRouterService } from './openRouterService';
 import { getTranscriptByVideoId } from './transcriptionService';
+import { VideoProcessingService } from './videoProcessingService';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -18,6 +19,7 @@ interface ChatMessageData {
 
 interface JoinSessionData {
   videoId: string;
+  newSession?: boolean;
 }
 
 export interface ProcessedClipSuggestion {
@@ -33,9 +35,11 @@ export interface ProcessedClipSuggestion {
 
 export class WebSocketService {
   private io: SocketServer;
+  private videoProcessingService: VideoProcessingService;
 
   constructor(io: SocketServer) {
     this.io = io;
+    this.videoProcessingService = new VideoProcessingService();
     this.setupEventHandlers();
   }
 
@@ -60,7 +64,7 @@ export class WebSocketService {
 
         try {
           // Find or create chat session
-          const session = await this.findOrCreateSession(socket.userId, data.videoId);
+          const session = await this.findOrCreateSession(socket.userId, data.videoId, data.newSession);
           socket.join(`session_${session.id}`);
           
           // Load chat history
@@ -112,20 +116,22 @@ export class WebSocketService {
     });
   }
 
-  private async findOrCreateSession(userId: string, videoId: string) {
-    // Try to find existing session
-    const existingSessions = await db
-      .select()
-      .from(chatSessions)
-      .where(and(
-        eq(chatSessions.userId, userId),
-        eq(chatSessions.videoId, videoId)
-      ))
-      .orderBy(desc(chatSessions.updatedAt))
-      .limit(1);
+  private async findOrCreateSession(userId: string, videoId: string, forceNew = false) {
+    if (!forceNew) {
+      // Try to find existing session
+      const existingSessions = await db
+        .select()
+        .from(chatSessions)
+        .where(and(
+          eq(chatSessions.userId, userId),
+          eq(chatSessions.videoId, videoId)
+        ))
+        .orderBy(desc(chatSessions.updatedAt))
+        .limit(1);
 
-    if (existingSessions.length > 0) {
-      return existingSessions[0];
+      if (existingSessions.length > 0) {
+        return existingSessions[0];
+      }
     }
 
     // Create new session
@@ -325,33 +331,37 @@ export class WebSocketService {
     // Extract clip suggestions from AI response using pattern matching
     const clipSuggestions: ProcessedClipSuggestion[] = [];
     
-    // Look for timestamp patterns and titles in the AI response
-    const timestampRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?[-–](\d{1,2}):(\d{2})(?::(\d{2}))?/g;
-    const matches = Array.from(aiResponse.matchAll(timestampRegex));
+    // Debug: Print first 1000 chars of AI response to understand format
+    console.log(`🎬 [WebSocket] AI response preview:`, aiResponse.substring(0, 1000));
+    
+    // Look for structured CLIP format: CLIP 1: "Title" followed by Time: MM:SS-MM:SS
+    const clipPattern = /CLIP\s*\d+:\s*["""]([^"""]+)["""]\s*[\r\n]+Time:\s*(\d{1,2}):(\d{2})(?::(\d{2}))?[-–](\d{1,2}):(\d{2})(?::(\d{2}))?\s*[\r\n]+Platform:\s*(\w+)\s*[\r\n]+Confidence:\s*(\d{1,3})%/gm;
+    
+    const matches = Array.from(aiResponse.matchAll(clipPattern));
+    console.log(`🎬 [WebSocket] Found ${matches.length} structured clips in AI response`);
+    
+    if (matches.length === 0) {
+      console.log(`🎬 [WebSocket] No matches found. Testing individual patterns:`);
+      console.log(`🎬 [WebSocket] CLIP pattern test:`, /CLIP\s*\d+:/gm.test(aiResponse));
+      console.log(`🎬 [WebSocket] Time pattern test:`, /Time:\s*\d{1,2}:\d{2}/gm.test(aiResponse));
+      console.log(`🎬 [WebSocket] Platform pattern test:`, /Platform:\s*\w+/gm.test(aiResponse));
+    }
 
-    for (const match of matches) {
-      const startMin = parseInt(match[1]);
-      const startSec = parseInt(match[2]);
-      const endMin = parseInt(match[4]);
-      const endSec = parseInt(match[5]);
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const title = match[1].trim();
+      const startMin = parseInt(match[2]);
+      const startSec = parseInt(match[3]);
+      const endMin = parseInt(match[5]);
+      const endSec = parseInt(match[6]);
+      const platform = match[8] || 'general';
+      const confidence = parseInt(match[9]) || 85;
+      const reasoning = `Extracted from AI analysis: ${title}`;
 
       const startTime = startMin * 60 + startSec;
       const endTime = endMin * 60 + endSec;
 
-      // Extract title and details from surrounding text
-      const matchIndex = match.index || 0;
-      const beforeMatch = aiResponse.substring(Math.max(0, matchIndex - 200), matchIndex);
-      const afterMatch = aiResponse.substring(matchIndex, matchIndex + 200);
-
-      // Look for titles in quotes or bold text
-      const titleMatch = beforeMatch.match(/["']([^"']+)["']|[*"](.*?)[*"]/) || 
-                        afterMatch.match(/["']([^"']+)["']|[*"](.*?)[*"]/);
-      
-      const title = titleMatch?.[1] || titleMatch?.[2] || `Clip ${startMin}:${startSec.toString().padStart(2, '0')}-${endMin}:${endSec.toString().padStart(2, '0')}`;
-
-      // Extract confidence if mentioned
-      const confidenceMatch = aiResponse.match(/(\d{1,3})%/);
-      const confidence = confidenceMatch ? parseInt(confidenceMatch[1]) : 85;
+      console.log(`🎬 [WebSocket] Processing clip ${i + 1}: "${title}" (${startTime}s-${endTime}s)`);
 
       // Save to database
       const [savedClip] = await db
@@ -363,8 +373,8 @@ export class WebSocketService {
           startTime,
           endTime,
           confidence,
-          platform: this.extractPlatform(aiResponse),
-          reasoning: this.extractReasoning(aiResponse, matchIndex),
+          platform,
+          reasoning: reasoning.substring(0, 500),
         })
         .returning();
 
@@ -380,6 +390,75 @@ export class WebSocketService {
       });
     }
 
+    // Fallback: If no structured clips found, try simpler timestamp extraction
+    if (clipSuggestions.length === 0) {
+      console.log(`🎬 [WebSocket] No structured clips found, falling back to timestamp extraction`);
+      const timestampRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?[-–](\d{1,2}):(\d{2})(?::(\d{2}))?/g;
+      const timestampMatches = Array.from(aiResponse.matchAll(timestampRegex));
+
+      for (let i = 0; i < timestampMatches.length && i < 5; i++) { // Limit to 5 clips max
+        const match = timestampMatches[i];
+        const startMin = parseInt(match[1]);
+        const startSec = parseInt(match[2]);
+        const endMin = parseInt(match[4]);
+        const endSec = parseInt(match[5]);
+
+        const startTime = startMin * 60 + startSec;
+        const endTime = endMin * 60 + endSec;
+
+        // Extract title from surrounding context more intelligently
+        const matchIndex = match.index || 0;
+        const contextStart = Math.max(0, matchIndex - 300);
+        const contextEnd = Math.min(aiResponse.length, matchIndex + 300);
+        const context = aiResponse.substring(contextStart, contextEnd);
+
+        // Look for titles in various formats
+        const titlePatterns = [
+          /CLIP\s*\d+:\s*["""]([^"""]+)["""]/i,
+          /["""]([^"""]{10,60})["""]/,
+          /^([A-Z][^.!?]*[.!?])/m,
+          /\*\*([^*]+)\*\*/,
+          /^-\s*([^-\n]+)/m
+        ];
+
+        let title = `Viral Clip ${i + 1}`;
+        for (const pattern of titlePatterns) {
+          const titleMatch = context.match(pattern);
+          if (titleMatch?.[1]) {
+            title = titleMatch[1].trim();
+            break;
+          }
+        }
+
+        // Save to database
+        const [savedClip] = await db
+          .insert(aiDiscoveredClips)
+          .values({
+            messageId,
+            videoId,
+            title: title.substring(0, 255),
+            startTime,
+            endTime,
+            confidence: 80, // Lower confidence for fallback parsing
+            platform: this.extractPlatform(aiResponse),
+            reasoning: `Extracted from timestamp ${startMin}:${startSec.toString().padStart(2, '0')}-${endMin}:${endSec.toString().padStart(2, '0')}`,
+          })
+          .returning();
+
+        clipSuggestions.push({
+          id: savedClip.id,
+          title: savedClip.title,
+          description: savedClip.description || undefined,
+          startTime: savedClip.startTime,
+          endTime: savedClip.endTime,
+          confidence: savedClip.confidence,
+          platform: savedClip.platform || undefined,
+          reasoning: savedClip.reasoning || undefined,
+        });
+      }
+    }
+
+    console.log(`🎬 [WebSocket] Successfully processed ${clipSuggestions.length} clip suggestions`);
     return clipSuggestions;
   }
 
@@ -434,6 +513,29 @@ export class WebSocketService {
           .update(aiDiscoveredClips)
           .set({ created: true })
           .where(eq(aiDiscoveredClips.id, clipId));
+
+        console.log(`🎬 [WebSocket] Starting clip processing for clip: ${createdClip.id}`);
+        
+        // Start processing the clip asynchronously
+        this.videoProcessingService.processClip(createdClip.id)
+          .then(() => {
+            console.log(`🎬 [WebSocket] Clip processing completed: ${createdClip.id}`);
+            socket.emit('clip_processing_complete', {
+              clipId,
+              createdClipId: createdClip.id,
+              title: clip.title,
+              status: 'completed'
+            });
+          })
+          .catch((error) => {
+            console.error(`🎬 [WebSocket] Clip processing failed: ${createdClip.id}`, error);
+            socket.emit('clip_processing_error', {
+              clipId,
+              createdClipId: createdClip.id,
+              title: clip.title,
+              error: 'Processing failed'
+            });
+          });
 
         socket.emit('clip_created', {
           clipId,

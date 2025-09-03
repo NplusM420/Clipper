@@ -14,33 +14,78 @@ export class VideoProcessingService {
 
   constructor() {
     this.objectStorage = new ObjectStorageService();
+    
+    // Configure FFmpeg to use the static binaries
+    const ffmpegPath = path.join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg');
+    const ffprobePath = path.join(process.cwd(), 'node_modules', 'ffprobe-static', 'bin', 'linux', 'x64', 'ffprobe');
+    
+    console.log(`🎬 [VideoProcessing] Configuring FFmpeg paths:`);
+    console.log(`📁 FFmpeg binary: ${ffmpegPath}`);
+    console.log(`📁 FFprobe binary: ${ffprobePath}`);
+    console.log(`✅ FFmpeg exists: ${fs.existsSync(ffmpegPath)}`);
+    console.log(`✅ FFprobe exists: ${fs.existsSync(ffprobePath)}`);
+    
+    // Set paths for fluent-ffmpeg
+    ffmpeg.setFfmpegPath(ffmpegPath);
+    ffmpeg.setFfprobePath(ffprobePath);
   }
 
   async processClip(clipId: string): Promise<void> {
+    console.log(`🎬 [VideoProcessing] === STARTING CLIP PROCESSING ===`);
+    console.log(`🎬 [VideoProcessing] Clip ID: ${clipId}`);
+    
     try {
       // Update status to processing
+      console.log(`🎬 [VideoProcessing] Step 1: Updating clip status to processing`);
       await storage.updateClipStatus(clipId, "processing");
       await storage.updateClipProgress(clipId, 0);
 
       // Get clip and video info
+      console.log(`🎬 [VideoProcessing] Step 2: Fetching clip and video data`);
       const clip = await storage.getClip(clipId);
       if (!clip) {
         throw new Error("Clip not found");
       }
+      
+      console.log(`🎬 [VideoProcessing] Clip details:`, {
+        id: clip.id,
+        title: clip.title,
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        duration: clip.endTime - clip.startTime,
+        videoId: clip.videoId,
+        quality: clip.quality || 'default'
+      });
 
       const video = await storage.getVideo(clip.videoId);
       if (!video) {
         throw new Error("Video not found");
       }
+      
+      console.log(`🎬 [VideoProcessing] Video details:`, {
+        id: video.id,
+        filename: video.filename,
+        isChunked: video.isChunked,
+        duration: video.duration,
+        originalPath: video.originalPath?.substring(0, 50) + '...'
+      });
 
       // Create temp directory
+      console.log(`🎬 [VideoProcessing] Step 3: Setting up temporary directories`);
       const tempDir = path.join(process.cwd(), 'temp');
       if (!fs.existsSync(tempDir)) {
+        console.log(`🎬 [VideoProcessing] Creating temp directory: ${tempDir}`);
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
       const tempInputPath = path.join(tempDir, `input_${clipId}.mp4`);
       const tempOutputPath = path.join(tempDir, `output_${clipId}.mp4`);
+      
+      console.log(`🎬 [VideoProcessing] Temp paths:`, {
+        tempDir,
+        inputPath: tempInputPath,
+        outputPath: tempOutputPath
+      });
 
       if (video.isChunked) {
         // SMART APPROACH: Use seamless concatenated video for clipping

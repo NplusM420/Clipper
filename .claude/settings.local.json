@@ -46,7 +46,16 @@
       "Bash(cd:*)",
       "Bash(pkill:*)",
       "Bash(fuser:*)",
-      "Bash(timeout 15s npm run dev)"
+      "Bash(timeout 15s npm run dev)",
+      "Bash(sudo apt:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(apt:*)",
+      "Bash(apt install:*)",
+      "Bash(whereis:*)",
+      "Read(/usr/bin/**)",
+      "Read(//**)",
+      "Bash(echo $PATH)",
+      "Bash(ffmpeg:*)"
     ],
     "additionalDirectories": [
       "/mnt/d/Clients"
